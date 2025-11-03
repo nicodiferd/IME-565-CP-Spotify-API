@@ -1,3 +1,32 @@
-.env 
-.venv
-vemv
+# Environment variables
+.env
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data files (uncomment if you don't want to track datasets)
+# data/*.csv
+# data/*.json
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
