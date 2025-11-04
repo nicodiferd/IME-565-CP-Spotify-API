@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Virtual environments
 venv/
@@ -13,20 +15,53 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+dist/
+*.egg-info/
 
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb_checkpoints/
 
-# Data files (uncomment if you don't want to track datasets)
-# data/*.csv
-# data/*.json
+# Data files - ignore large datasets but keep structure
+data/raw/*.csv
+data/raw/*.json
+data/processed/*.csv
+data/personal/*
+!data/personal/.gitkeep
+!data/*/README.md
+
+# Spotify API cache and tokens (SENSITIVE - DO NOT COMMIT!)
+.spotify_cache/
+.cache-*
+*.cache
+
+# Models - ignore saved models
+models/*
+!models/.gitkeep
+
+# Outputs - ignore generated files
+outputs/figures/*
+outputs/reports/*
+!outputs/figures/.gitkeep
+!outputs/reports/.gitkeep
 
 # macOS
 .DS_Store
+.DS_Store?
+._*
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log

@@ -42,32 +42,65 @@ The project follows a three-phase development strategy:
 
 ### Environment Setup
 ```bash
-# Install dependencies for Mac
-pip install -r requirements-mac.txt
+# Option 1: Quick install using shell script (recommended for Mac)
+bash install_deps.sh
 
-# Install dependencies for Windows
-pip install -r requirements-windows.txt
+# Option 2: Manual install with requirements file
+pip install -r requirements-mac.txt  # Mac
+pip install -r requirements-windows.txt  # Windows
 
-# Set up environment variables
+# Option 3: Minimal install (for Python 3.14 compatibility)
+bash quick_install.sh
+
+# Set up Spotify API credentials
 cp .env.example .env
-# Edit .env to add Spotify API credentials
+# Edit .env and add:
+#   SPOTIFY_CLIENT_ID=your_client_id_here
+#   SPOTIFY_CLIENT_SECRET=your_client_secret_here
+#   SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+# Get credentials from: https://developer.spotify.com/dashboard
+```
+
+### Data Acquisition
+```bash
+# Download datasets from Kaggle and place in data/ directory
+# See data/README.md for specific dataset links
+# Required: At least one of these datasets:
+#   - Spotify Tracks Dataset (~114k tracks): dataset.csv
+#   - Top Spotify Songs 2023: spotify-2023.csv
+#   - Alternative: Spotify 1921-2020 (160k+ tracks): tracks.csv
 ```
 
 ### Running the Application
 ```bash
-# Run the Streamlit app
+# Run the Streamlit app (main dashboard)
 streamlit run "spotify app.py"
-```
 
-### Development
-```bash
 # Run Jupyter notebook for data exploration
 jupyter notebook Spotify.ipynb
+
+# Verify installation
+python -c 'import pandas, numpy, matplotlib, seaborn, plotly; print("All packages imported successfully!")'
 ```
 
 ## Architecture Notes
 
-### Spotify API Authentication
+### Jupyter Notebook Workflow (Spotify.ipynb)
+
+The main analysis notebook follows this pipeline:
+1. **Data Loading**: Auto-detects CSV files in `data/` directory, tries multiple encodings
+2. **Data Cleaning**: Removes duplicates, invalid loudness values (>0 dB), tracks <5 seconds
+3. **Feature Engineering**: Creates composite metrics (mood_score, grooviness, focus_score, relaxation_score)
+4. **Context Classification**: Rule-based categorization into Workout, Focus, Relaxation, Party, General
+5. **Visualization**: Distributions, correlations, top artists/genres
+6. **Export**: Saves processed data to `data/processed_spotify_data.csv`
+
+**Key feature columns**:
+- Core audio: danceability, energy, valence, acousticness, instrumentalness, speechiness
+- Metadata: track_name, artists, album_name, track_genre, popularity
+- Composite: mood_score, grooviness, focus_score, relaxation_score, context
+
+### Spotify API Authentication (for Streamlit app)
 - Use **session-based cache handler** for multi-user Streamlit deployment
 - Store tokens in `st.session_state` to prevent users from sharing the same token
 - Implement token refresh logic at the 50-minute mark (tokens expire after 60 minutes)
@@ -174,15 +207,23 @@ Implement clustering to automatically classify activities based on audio feature
 
 ```
 .
-├── spotify app.py           # Main Streamlit application
-├── Spotify.ipynb            # Data exploration notebook
-├── requirements-mac.txt     # Python dependencies for Mac
-├── requirements-windows.txt # Python dependencies for Windows
-├── .env.example            # Environment variables template
-├── .gitignore              # Git ignore rules
-├── notes.md                # Research notes and technical patterns
+├── spotify app.py                # Main Streamlit application (currently empty)
+├── Spotify.ipynb                 # Data exploration and analysis notebook
+├── requirements-mac.txt          # Python dependencies for Mac
+├── requirements-windows.txt      # Python dependencies for Windows
+├── install_deps.sh               # Shell script for installing dependencies
+├── quick_install.sh              # Minimal install for Python 3.14
+├── .env.example                  # Spotify API credentials template
+├── .gitignore                    # Git ignore rules
+├── notes.md                      # Research notes and technical patterns
 ├── IME565_Project_Proposal_Final.md  # Full project proposal
-└── README.md               # Project overview
+├── data/
+│   ├── README.md                 # Instructions for downloading datasets
+│   ├── dataset.csv               # Main Spotify tracks dataset (114k tracks)
+│   ├── spotify-2023.csv          # Top songs 2023
+│   ├── artists.csv               # Artist metadata (large file)
+│   └── processed_spotify_data.csv # Output from Spotify.ipynb (generated)
+└── README.md                     # Project overview
 ```
 
 ## Important Considerations
@@ -197,11 +238,13 @@ Implement clustering to automatically classify activities based on audio feature
 - Focus on actionable insights over vanity metrics
 - Enable ongoing utility (weekly/monthly engagement) vs one-time novelty
 
-### Data Quality
-- Heavy users may have 120,000-174,000 streaming events
-- Missing values: Audio features occasionally null for deleted content
-- Invalid entries: Loudness values > 0 dB violate specifications
-- Noise filtering: Remove plays under 5 seconds
+### Data Quality and Cleaning Rules
+- **Invalid loudness**: Remove tracks with loudness > 0 dB (violates spec, should be negative)
+- **Short tracks**: Filter out tracks < 5 seconds (indicates skips or noise)
+- **Missing values**: Audio features occasionally null for deleted content (handle in preprocessing)
+- **Duplicates**: Check for and remove duplicate track entries
+- **Heavy users**: Expect 120,000-174,000 streaming events in personal Spotify data exports
+- **Encoding**: CSV files may require different encodings (try utf-8, latin-1, iso-8859-1, cp1252)
 
 ## Project Goals
 
