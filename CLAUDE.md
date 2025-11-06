@@ -9,6 +9,8 @@ This is a multi-phase Spotify analytics platform project for IME 565 (Predictive
 **Team**: Nicolo DiFerdinando, Joe Mascher, Rithvik Shetty
 **Course**: IME 565, Fall Quarter 2025
 
+**Current Phase**: Phase 1 Complete - Real data collection system implemented
+
 ## Development Phases
 
 The project follows a three-phase development strategy:
@@ -73,32 +75,104 @@ cp .env.example .env
 
 ### Running the Application
 ```bash
-# Run the Streamlit app (main dashboard)
-streamlit run "spotify app.py"
+# Run the Streamlit dashboard
+streamlit run app/spotify_dashboard.py
 
-# Run Jupyter notebook for data exploration
-jupyter notebook Spotify.ipynb
+# Run Jupyter notebook for exploratory data analysis
+jupyter notebook notebooks/01_Phase1_EDA.ipynb
 
 # Verify installation
 python -c 'import pandas, numpy, matplotlib, seaborn, plotly; print("All packages imported successfully!")'
 ```
 
+### Collecting Real Spotify Data
+```bash
+# Initial setup: Authenticate each team member (do once)
+python scripts/spotify_auth.py --user nicolo
+python scripts/spotify_auth.py --user joe
+python scripts/spotify_auth.py --user rithvik
+
+# Full collection (run weekly)
+python scripts/collect_spotify_data.py --user all
+python scripts/enrich_with_audio_features.py --user all
+python scripts/merge_team_data.py
+
+# Quick update (recently played only)
+python scripts/collect_spotify_data.py --user all --recently-played-only
+python scripts/enrich_with_audio_features.py --user all
+python scripts/merge_team_data.py
+
+# Output: data/team_listening_history.csv
+```
+
 ## Architecture Notes
 
-### Jupyter Notebook Workflow (Spotify.ipynb)
+### Code Organization Philosophy
 
-The main analysis notebook follows this pipeline:
-1. **Data Loading**: Auto-detects CSV files in `data/` directory, tries multiple encodings
-2. **Data Cleaning**: Removes duplicates, invalid loudness values (>0 dB), tracks <5 seconds
-3. **Feature Engineering**: Creates composite metrics (mood_score, grooviness, focus_score, relaxation_score)
-4. **Context Classification**: Rule-based categorization into Workout, Focus, Relaxation, Party, General
-5. **Visualization**: Distributions, correlations, top artists/genres
-6. **Export**: Saves processed data to `data/processed_spotify_data.csv`
+This project follows standard data science practices:
+- **`notebooks/`**: Exploration and analysis (Jupyter notebooks)
+- **`src/`**: Reusable Python modules (imported by notebooks and app)
+- **`app/`**: Production Streamlit dashboard
+- **`scripts/`**: Data collection automation (Spotify API)
+
+**Golden Rule**: Extract shared code from notebooks to `src/`, import from both notebooks and app.
+
+### Data Collection Pipeline (scripts/)
+
+The 4-script pipeline collects real team listening data:
+
+1. **`spotify_auth.py`**: OAuth authentication (do once per team member)
+   - Multi-user token management
+   - Automatic token refresh
+   - Browser-based OAuth flow
+
+2. **`collect_spotify_data.py`**: Fetch listening history from Spotify API
+   - Recently played tracks (last 50 with timestamps)
+   - Top tracks/artists (short/medium/long term)
+   - User playlists metadata
+
+3. **`enrich_with_audio_features.py`**: Add audio features and derived metrics
+   - Fetch audio features from Spotify API (batched)
+   - Fallback to Kaggle database for missing tracks
+   - Compute composite scores (mood, grooviness, focus, relaxation)
+   - Infer context (workout, focus, party, commute, sleep)
+   - Add temporal features (hour, day, weekend, season)
+
+4. **`merge_team_data.py`**: Combine all team members into unified dataset
+   - Outputs: `data/team_listening_history.csv`
+
+### Data Processing Modules (src/)
+
+**`data_processing.py`**: Loading and cleaning functions
+- `load_spotify_data()`: Auto-detect CSV encoding, load Kaggle datasets
+- `clean_dataset()`: Remove duplicates, invalid loudness (>0 dB), short tracks (<5s)
+- `identify_audio_features()`: Detect which columns contain audio features
+
+**`feature_engineering.py`**: Composite metrics and classification
+- `create_composite_features()`: Mood, grooviness, focus, relaxation scores
+- `classify_context()`: Rule-based context categorization (5 categories)
+- Formulas use weighted combinations of audio features
+
+**`visualization.py`**: Reusable plotting functions
+- `plot_feature_distributions()`: Histograms for audio features
+- `plot_correlation_matrix()`: Feature correlation heatmap
+- `plot_top_artists_genres()`: Bar charts for top items
+
+### Jupyter Notebook Workflow (notebooks/01_Phase1_EDA.ipynb)
+
+Analysis pipeline:
+1. Import from `src/` modules (data_processing, feature_engineering, visualization)
+2. Load data using `load_spotify_data()`
+3. Clean with `clean_dataset()`
+4. Engineer features with `create_composite_features()` and `classify_context()`
+5. Visualize using functions from `visualization.py`
+6. Export processed data to `data/processed/`
 
 **Key feature columns**:
 - Core audio: danceability, energy, valence, acousticness, instrumentalness, speechiness
 - Metadata: track_name, artists, album_name, track_genre, popularity
 - Composite: mood_score, grooviness, focus_score, relaxation_score, context
+- Temporal (from real data): played_at, hour, day_of_week, is_weekend, season
 
 ### Spotify API Authentication (for Streamlit app)
 - Use **session-based cache handler** for multi-user Streamlit deployment
@@ -157,14 +231,27 @@ Spotify provides machine-generated audio features (0.0-1.0 scale for most):
 
 ## Data Sources
 
-### Phase 1 (Public Datasets)
-- Spotify Tracks Dataset: ~114,000 tracks with comprehensive audio features
-- Top Spotify Songs datasets: 50,000-170,000 tracks with popularity metrics
-- Available on Kaggle
+### Real Team Listening Data (Primary - Implemented)
+**Collected via scripts pipeline**:
+- Recently played tracks with timestamps (last 50 per user)
+- Top tracks/artists across time ranges (short/medium/long term)
+- Complete audio features from Spotify API
+- Fallback to Kaggle database for missing features
+- **Output**: `data/team_listening_history.csv`
+- **Timeline**: Collected weekly throughout project (Weeks 7-10)
 
-### Phase 2-3 (User Data)
-- Spotify API Recent History: Last 50 tracks via recently-played endpoint
-- Privacy Export Data: Complete listening history (JSON format, 3-30 days delivery time)
+### Kaggle Public Datasets (Supplementary)
+**For audio feature fallback and benchmarking**:
+- Spotify Tracks Dataset: ~114,000 tracks with comprehensive audio features
+- Top Spotify Songs 2023: ~50,000 tracks with popularity metrics
+- Spotify 1921-2020: 160k+ tracks
+- **Location**: `data/raw/` (download manually from Kaggle)
+- **Use case**: Enrich team data with features for older/obscure tracks
+
+### Optional: Spotify Privacy Export
+- Complete listening history (JSON format, 3-30 days delivery time)
+- Provides historical data beyond API's 50-track limit
+- **Location**: `data/personal/` if obtained
 
 ## Machine Learning Targets (Phase 3)
 
@@ -207,23 +294,55 @@ Implement clustering to automatically classify activities based on audio feature
 
 ```
 .
-├── spotify app.py                # Main Streamlit application (currently empty)
-├── Spotify.ipynb                 # Data exploration and analysis notebook
+├── README.md                     # Project overview
+├── CLAUDE.md                     # This file - development guide
+├── LICENSE
+├── .env.example                  # Spotify API credentials template
+├── .gitignore                    # Git ignore rules
 ├── requirements-mac.txt          # Python dependencies for Mac
 ├── requirements-windows.txt      # Python dependencies for Windows
 ├── install_deps.sh               # Shell script for installing dependencies
 ├── quick_install.sh              # Minimal install for Python 3.14
-├── .env.example                  # Spotify API credentials template
-├── .gitignore                    # Git ignore rules
-├── notes.md                      # Research notes and technical patterns
-├── IME565_Project_Proposal_Final.md  # Full project proposal
-├── data/
-│   ├── README.md                 # Instructions for downloading datasets
-│   ├── dataset.csv               # Main Spotify tracks dataset (114k tracks)
-│   ├── spotify-2023.csv          # Top songs 2023
-│   ├── artists.csv               # Artist metadata (large file)
-│   └── processed_spotify_data.csv # Output from Spotify.ipynb (generated)
-└── README.md                     # Project overview
+│
+├── notebooks/                    # Jupyter notebooks for analysis
+│   └── 01_Phase1_EDA.ipynb       # Phase 1: Exploratory Data Analysis
+│
+├── src/                          # Reusable Python modules
+│   ├── __init__.py
+│   ├── data_processing.py        # Data loading, cleaning, preprocessing
+│   ├── feature_engineering.py    # Composite features, context classification
+│   └── visualization.py          # Reusable plotting functions
+│
+├── app/                          # Streamlit application
+│   ├── spotify_dashboard.py      # Main Streamlit dashboard (empty - to be built)
+│   ├── pages/                    # Multi-page app structure (empty)
+│   └── components/               # Reusable UI components (empty)
+│
+├── scripts/                      # Data collection automation
+│   ├── README.md                 # Scripts documentation
+│   ├── spotify_auth.py           # OAuth authentication for Spotify API
+│   ├── collect_spotify_data.py   # Fetch listening history from Spotify
+│   ├── enrich_with_audio_features.py  # Add audio features and metrics
+│   └── merge_team_data.py        # Combine team members into unified dataset
+│
+├── data/                         # Data files (git-ignored except README)
+│   ├── README.md                 # Dataset download instructions
+│   ├── raw/                      # Original datasets (Kaggle CSVs, Spotify JSON)
+│   ├── processed/                # Cleaned/processed data per user
+│   ├── personal/                 # User's personal Spotify data (optional)
+│   └── team_listening_history.csv  # Final merged team dataset (generated)
+│
+├── models/                       # Saved ML models (Phase 3)
+├── outputs/                      # Generated plots and reports
+├── tests/                        # Unit tests (empty - optional)
+└── docs/                         # Documentation
+    ├── PROJECT_STRUCTURE.md      # Detailed file organization
+    ├── QUICK_START_GUIDE.md      # Step-by-step data collection instructions
+    ├── SPOTIFY_DATA_COLLECTION_GUIDE.md  # Technical guide
+    ├── DATA_STRATEGY_ANALYSIS.md # Why real data vs Kaggle
+    ├── IMPLEMENTATION_SUMMARY.md # System overview
+    ├── notes.md                  # Research notes
+    └── IME565_Project_Proposal_Final.md  # Full project proposal
 ```
 
 ## Important Considerations
@@ -255,6 +374,18 @@ The platform differentiates from existing tools (Stats.fm, Obscurify, Spotify Wr
 4. Predictive recommendations with explanations
 5. Ongoing utility with weekly engagement
 
+## Documentation
+
+For detailed information on specific topics:
+
+- **`docs/QUICK_START_GUIDE.md`**: Step-by-step data collection walkthrough (20-30 min first time)
+- **`docs/PROJECT_STRUCTURE.md`**: File organization philosophy and migration guide
+- **`docs/SPOTIFY_DATA_COLLECTION_GUIDE.md`**: Complete technical guide to data collection
+- **`docs/DATA_STRATEGY_ANALYSIS.md`**: Why real data vs Kaggle synthetic data
+- **`docs/IMPLEMENTATION_SUMMARY.md`**: Overview of the data collection system
+- **`scripts/README.md`**: Detailed documentation for each collection script
+- **`docs/IME565_Project_Proposal_Final.md`**: Full project proposal and research foundation
+
 ## References
 
 Key research papers informing this project:
@@ -262,4 +393,4 @@ Key research papers informing this project:
 - Brinker et al. (2012): Audio features and emotional valence/arousal
 - Schedl et al. (2018): Music recommender system challenges
 
-See `IME565_Project_Proposal_Final.md` for full citations and research foundation.
+See `docs/IME565_Project_Proposal_Final.md` for full citations.
