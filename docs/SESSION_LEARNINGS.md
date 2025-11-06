@@ -509,7 +509,7 @@ A: Yes - n8n workflow with Cloudflare tunnel (n8n.diferdinando.com).
 - Rithvik Shetty
 
 **Spotify Developer App**: IME 565 Spotify Analytics
-**Client ID**: `4f226b6e1e8c47f5996bae4cc5b48394`
+**Client ID**: 
 
 ---
 
