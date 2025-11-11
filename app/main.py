@@ -1,10 +1,3 @@
-"""
-Spotify Listening Analytics Dashboard
-IME 565 - Predictive Data Analytics for Engineers
-
-A Streamlit app for personalized Spotify listening insights with advanced analytics
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -14,8 +7,6 @@ from datetime import datetime
 import os
 import sys
 from dotenv import load_dotenv
-
-# Spotipy imports
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 

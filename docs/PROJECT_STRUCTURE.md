@@ -36,7 +36,7 @@ IME-565-CP-Spotify-API/
 │   └── utils.py                      # General utility functions
 │
 ├── app/                               # 🎨 Streamlit application
-│   ├── spotify_dashboard.py          # Main Streamlit app
+│   ├── main.py          # Main Streamlit app
 │   ├── pages/                        # Multi-page app structure
 │   │   ├── 1_Overview.py
 │   │   ├── 2_Audio_Features.py
@@ -103,13 +103,13 @@ IME-565-CP-Spotify-API/
 - Implementing APIs or web services
 
 **Current scripts:**
-- `spotify app.py` → Will become `app/spotify_dashboard.py`
+- `spotify app.py` → Will become `app/main.py`
 
 **Future scripts:**
 - `src/data_processing.py` - Extract data loading logic from notebooks
 - `src/feature_engineering.py` - Composite features, classification
 - `src/visualization.py` - Reusable plotting functions
-- `app/spotify_dashboard.py` - Main Streamlit dashboard
+- `app/main.py` - Main Streamlit dashboard
 
 ---
 
@@ -119,7 +119,7 @@ IME-565-CP-Spotify-API/
 ```
 1. Explore in notebook: notebooks/01_Phase1_EDA.ipynb ✅
 2. Extract reusable functions → src/data_processing.py
-3. Build basic Streamlit dashboard → app/spotify_dashboard.py
+3. Build basic Streamlit dashboard → app/main.py
 4. Present findings from notebook
 ```
 
@@ -192,7 +192,7 @@ mkdir -p notebooks src app data/{raw,processed,personal} models outputs/{figures
 
 # Move existing files
 mv Spotify.ipynb notebooks/01_Phase1_EDA.ipynb
-mv "spotify app.py" app/spotify_dashboard.py
+mv "spotify app.py" app/main.py
 mv notes.md docs/
 mv IME565_Project_Proposal_Final.md docs/
 
@@ -206,7 +206,7 @@ mv data/*.csv data/raw/
 - Update notebook to import from src/
 
 ### Step 3: Build Streamlit App (Phase 1 completion)
-- Implement basic dashboard in `app/spotify_dashboard.py`
+- Implement basic dashboard in `app/main.py`
 - Use functions from src/ modules
 - Display Phase 1 insights
 
@@ -285,7 +285,7 @@ A: When you need it in multiple places OR when building the Streamlit app.
 A: Yes! That's the recommended pattern. Notebooks stay clean, code is reusable.
 
 **Q: Where does the Streamlit app code go?**
-A: In `app/spotify_dashboard.py`. Import functions from `src/`.
+A: In `app/main.py`. Import functions from `src/`.
 
 **Q: Should I commit processed data?**
 A: Only if < 10 MB. Otherwise, regenerate from raw data using notebooks.

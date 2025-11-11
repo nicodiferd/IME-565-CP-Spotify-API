@@ -29,7 +29,9 @@ This project addresses critical gaps in existing music analytics tools by provid
 │   ├── feature_engineering.py
 │   └── visualization.py
 ├── app/                    # Streamlit dashboard
-│   └── spotify_dashboard.py
+│   ├── main.py            # Main app entry point
+│   ├── func/              # Utility functions (auth, data fetching, S3)
+│   └── pages/             # Dashboard pages (deep_user.py, etc.)
 ├── data/                   # Data files
 │   ├── raw/               # Original datasets
 │   ├── processed/         # Cleaned data
@@ -39,7 +41,7 @@ This project addresses critical gaps in existing music analytics tools by provid
 └── outputs/                # Generated plots and reports
 ```
 
-See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed organization.
+See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for detailed organization.
 
 ---
 
@@ -78,7 +80,7 @@ Place downloaded CSV files in `data/raw/` directory.
 jupyter notebook notebooks/01_Phase1_EDA.ipynb
 
 # Option 2: Streamlit Dashboard (interactive visualization)
-streamlit run app/spotify_dashboard.py
+streamlit run app/main.py
 ```
 
 ---
@@ -110,6 +112,16 @@ streamlit run app/spotify_dashboard.py
 - Top artists, genres, and tracks
 - Context distribution analysis
 - Interactive Streamlit dashboard
+
+**🆕 Deep User Analytics:**
+- **Automatic data collection**: Snapshots saved to Cloudflare R2 on every login
+- **Historical tracking**: Monitor your listening habits over time
+- **Artist evolution**: See how your top artists change week-to-week
+- **Listening patterns**: Temporal analysis of when and what you listen to
+- **Team comparison**: Compare listening habits with teammates (coming soon)
+- **Metrics over time**: Track audio features, diversity scores, and context distributions
+
+See [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) for setup instructions.
 
 ### Key Results (114,000 tracks analyzed)
 

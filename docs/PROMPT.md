@@ -604,7 +604,7 @@ def test_mood_score():
 1. **Set up Streamlit environment**
    ```bash
    pip install streamlit plotly spotipy python-dotenv pandas
-   streamlit run app/spotify_dashboard.py
+   streamlit run app/main.py
    ```
 
 2. **Implement OAuth authentication**
