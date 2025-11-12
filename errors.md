@@ -1,0 +1,24 @@
+            
+HTTP Error for GET to https://api.spotify.com/v1/audio-features/?ids=0X14bByEYHVw3vZlj5LuLp,62hpoPrA3rtfeX1aWONig5,2yUzr8Sr6ldG8vmHhZwTnz,093MlZS93ZKlHpGkmb3k3W,541sN2qNfIlllGn9nGOQoC,00n83h3zn2IrySO4Q4aTrG,6cZH4rX1KTt1aJ3Ql6Ynja,55ZNNY6D8FkNFAlVceAwIZ,4tGbZjNFJLPTtw5CAwRjUP,7EdJ8z6IBotTjO50DfzzuV,7EdJ8z6IBotTjO50DfzzuV,0RBw4ODUQPO4cuAOZtBGga,29BXvdSR0ucyQ4m6WwdHRh,4bnq2OQUwACkp2vCEbY52g,0bxPRWprUVpQK0UFcddkrA,3w3y8KPTfNeOKPiqUTakBh,19m3E0nMZobyA93AxMXC32,4KjnaUNYPwGnJjoeTFlt91,43KrLcrVbDBimYtjKswIL3,338HvC3y58zPScamNZu4Dr with Params: {} returned 403 due to None
+HTTP Error for GET to https://api.spotify.com/v1/audio-features/?ids=3etbPFMXnAuShtcImz4UXW,1lvRpSOK1BgNbObb3K0bzI,54IbnYEdA3ymfxv07WgN3b,0bxPRWprUVpQK0UFcddkrA,1HA2V2EfAgJUBVOju4YfiB,2QKyJTx9MeKu5DTXiLv5ve,3njpLvANriMsdv3dgADEad,6Q4Es6wVFh8W2qXrkQ7j1w,1i1ulBbyeZF4vxO4vmHoiq,1xLs8Mu1QEVbGCpyHQ2r2U,2HQqhVP8NOaoIhPTQ8I5bm,5TVM67jKhJM48sY7tvHrMO,0TAIIxetpsMUEPOHZkQO9J,6YiIWuVXS4AqF1KvUGMwyx,2l5RGPbH2eq93zMytmGZ4n,1zKuSINcb2QSE7m6mk6J36,2HRqTpkrJO5ggZyyK6NPWz,2sFV9MPFe33fX1KqrBA4Cs,34rOW0yx7mEBKfvI8b2wSK,3DLWVhaowApIGw1JnJj6GS with Params: {} returned 403 due to None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+ERROR:spotipy.client:Max Retries reached
+WARNING:app.func.data_fetching:Retrying app.func.data_fetching.fetch_top_tracks.<locals>._fetch in 2.0 seconds as it raised SpotifyException: http status: 429, code: -1 - /v1/me/top/tracks?time_range=medium_term&limit=20&offset=0:
+ Max Retries, reason: too many 502 error responses.
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+ERROR:spotipy.client:Max Retries reached
+WARNING:app.func.data_fetching:Retrying app.func.data_fetching.fetch_top_tracks.<locals>._fetch in 2.0 seconds as it raised SpotifyException: http status: 429, code: -1 - /v1/me/top/tracks?time_range=medium_term&limit=20&offset=0:
+ Max Retries, reason: too many 502 error responses.
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+WARNING:root:Your application has reached a rate/request limit. Retry will occur after: None
+ERROR:spotipy.client:Max Retries reached
+ERROR:spotipy.client:HTTP Error for GET to https://api.spotify.com/v1/audio-features/?ids=2u9S9JJ6hTZS3Vf22HOZKg,1Is8hGpkGMiePASAxBluxM,4VMiNOpnjRwSCwmHaUfOMM,0X14bByEYHVw3vZlj5LuLp,5274I4mUMnYczyeXkGDWZN,7L95O7D34EWhwtDCQkwGMR,0flSGzqHO12p9fU9kqaHGE,1goNZsIE8w3NQOzlP40veh,0B8N3M6SaJGwP9upZCpuWz,0JR7iZZ6Ql79sXW3rbiS3F,50a8bKqlwDEqeiEknrzkTO,2uTrdatngtB000duMrfbiV,2EhJijFUs0WUmNClDBpYJq,7nD5MiXspW533xaREDma2N,1BpKJw4RZxaFB88NE5uxXf,7EBy2V93Ykyvfc5CMApTGc,2OsDoAzo5SGq10qwmKSQBv,5iG5cxNN8um3C4b4rDAWl8,2vs5ubqg8QUbfyWZpMfvWe,6FcDxtnGfsYHOcGkXN2OIG with Params: {} returned 403 due to None
+ERROR:spotipy.client:HTTP Error for GET to https://api.spotify.com/v1/audio-features/?ids=0X14bByEYHVw3vZlj5LuLp,62hpoPrA3rtfeX1aWONig5,2yUzr8Sr6ldG8vmHhZwTnz,093MlZS93ZKlHpGkmb3k3W,541sN2qNfIlllGn9nGOQoC,00n83h3zn2IrySO4Q4aTrG,6cZH4rX1KTt1aJ3Ql6Ynja,55ZNNY6D8FkNFAlVceAwIZ,4tGbZjNFJLPTtw5CAwRjUP,7EdJ8z6IBotTjO50DfzzuV,7EdJ8z6IBotTjO50DfzzuV,0RBw4ODUQPO4cuAOZtBGga,29BXvdSR0ucyQ4m6WwdHRh,4bnq2OQUwACkp2vCEbY52g,0bxPRWprUVpQK0UFcddkrA,3w3y8KPTfNeOKPiqUTakBh,19m3E0nMZobyA93AxMXC32,4KjnaUNYPwGnJjoeTFlt91,43KrLcrVbDBimYtjKswIL3,338HvC3y58zPScamNZu4Dr,5unjCay0kUjuej5ebn4nS4,3L19besdNQzd342qL78xqm,2OsDoAzo5SGq10qwmKSQBv,01z2fBGB8Hl3Jd3zXe4IXR,6eT7xZZlB2mwyzJ2sUKG6w,0C3gyphZJY83XplEHz30m0,4H5DcBcHSt6ReloheY37Yi,29iva9idM6rFCPUlu7Rhxl,1eDS8ii1utvj0PjfQLrDb4,2egIlhalVEVQhvt9W11u82,6YoIklDN0qyJA1NuXwKrEw,34HgIvucTKJvDgzHVMaGLG,7xf79guSH77xiMEZ4XC0JC,4keHa1UN3c9OWHVv3BE5ra,66YywMJbAgzQrGkFKjnSsK,0gf3IZ1k7teUROj3lmUOZM,4QIo4oxwzzafcBWkKjDpXY,4vHNeBWDQpVCmGbaccrRzi,14qNHvX8h6HoynFuV0RxWS,4Sp4AgLbWeqddzY7DNhJFv,2JmFRXaJrkAUD2cs6U20KG,1cCbsojaA6GIT7Y3zuMJ1q,7umZiitjVsEjMQ6HNddpUI,5rgrBsAFYMun6yhtnLKRPz,2Hd7uGbl8PX0IxyX59VFOg,1qbmS6ep2hbBRaEZFpn7BX,6Q4Es6wVFh8W2qXrkQ7j1w,1cCbsojaA6GIT7Y3zuMJ1q,4ioL2LLJRJSL3EJM8IkAn4,6YoIklDN0qyJA1NuXwKrEw with Params: {} returned 403 due to None

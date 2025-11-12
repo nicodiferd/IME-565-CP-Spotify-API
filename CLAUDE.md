@@ -24,18 +24,18 @@ This is a multi-phase Spotify analytics platform project for IME 565 (Predictive
 - **Visualization modules** (`src/visualization.py`)
   - Distribution plots, correlation matrices
   - Top artists/genres charts
-- **Streamlit dashboard** (`app/main.py`)
+- **Streamlit dashboard** (fully modularized)
+  - `app/Home.py` - Home page and main entry point for multi-page app
+  - `app/func/` - Function modules (auth, data fetching, processing, visualizations, UI, S3 storage, data collection)
+  - `app/pages/` - Page modules (dashboard, analytics, recent listening, top tracks, playlists, deep user)
   - OAuth authentication
   - Real-time Spotify data fetching
   - Interactive visualizations
+  - Cloudflare R2 storage for historical data
 - **Jupyter notebook** (`notebooks/01_Phase1_EDA.ipynb`)
   - Complete EDA workflow
 
 ### 📋 Planned (Not Yet Implemented)
-- **Streamlit app refactoring** (planned `app/func/` and `app/pages/` directories)
-  - Currently all code is in single `main.py` file
-  - Will be split into modular structure with separate pages and function modules
-  - See "Streamlit App Structure (Planned)" section for details
 - **Data collection scripts** (planned `scripts/` directory)
   - `spotify_auth.py` - Multi-user OAuth
   - `collect_spotify_data.py` - API data collection
@@ -77,6 +77,51 @@ The project follows a three-phase development strategy:
 
 ## Common Development Workflows
 
+### Adding a New Streamlit Page
+
+Streamlit automatically discovers pages in the `app/pages/` directory. To add a new page:
+
+1. **Create page file** in `app/pages/` with numbered prefix:
+```python
+# File: app/pages/7_Your_Page.py
+import streamlit as st
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from func.ui_components import apply_page_config, get_custom_css
+from func.page_auth import require_auth
+
+# Apply page config and styling
+apply_page_config()
+st.markdown(get_custom_css(), unsafe_allow_html=True)
+
+# Require authentication
+sp, profile = require_auth()
+if not sp:
+    st.warning("Please connect your Spotify account to view this page.")
+    st.stop()
+
+# Page content
+st.header("🎨 Your Page Title")
+# Your page logic here...
+```
+
+2. **File naming convention**:
+   - Prefix with a number to control order: `7_`, `8_`, etc.
+   - Use descriptive name with underscores: `Your_Page.py`
+   - **NEVER use emojis** in filenames (causes cross-platform issues)
+   - Result: `7_Your_Page.py`
+
+3. **That's it!** Streamlit automatically:
+   - Discovers the new page
+   - Adds it to sidebar navigation
+   - Renders the name in the menu
+
+**No need to modify** `Home.py` or any routing logic - Streamlit handles it automatically!
+
 ### Adding a New Audio Feature or Composite Metric
 
 1. **Define the metric** in `src/feature_engineering.py`:
@@ -87,7 +132,7 @@ def create_composite_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 ```
 
-2. **Update visualizations** in `src/visualization.py` if needed
+2. **Update visualizations** in `src/visualization.py` or `app/func/visualizations.py` if needed
 
 3. **Test in notebook** (`notebooks/01_Phase1_EDA.ipynb`):
 ```python
@@ -95,7 +140,7 @@ df_processed = create_composite_features(df_clean)
 print(df_processed['your_metric'].describe())
 ```
 
-4. **Add to Streamlit dashboard** (`app/main.py`) for interactive display
+4. **Add to Streamlit dashboard** by creating a new page or adding to an existing page
 
 ### Adding a New Context Classification Rule
 
@@ -164,8 +209,8 @@ cp .env.example .env
 
 ### Running the Application
 ```bash
-# Run the Streamlit dashboard
-streamlit run app/main.py
+# Run the Streamlit dashboard (multi-page app)
+streamlit run app/Home.py
 
 # Run Jupyter notebook for exploratory data analysis
 jupyter notebook notebooks/01_Phase1_EDA.ipynb
@@ -203,38 +248,55 @@ This project follows standard data science practices:
 
 **Golden Rule**: Extract shared code from notebooks to `src/`, import from both notebooks and app.
 
-### Streamlit App Structure (Planned)
+### Streamlit App Structure
 
-The Streamlit dashboard will be organized into a multi-page application with the following structure:
+The Streamlit dashboard uses **Streamlit's native multi-page app** structure with automatic navigation:
 
 **Main Entry Point:**
-- **`app/main.py`**: The main file to run (`streamlit run app/main.py`)
-  - Handles app configuration and initialization
-  - Manages session state
-  - Provides navigation between pages
-  - Currently contains all functionality (to be refactored)
+- **`app/Home.py`**: The home page and entry point (`streamlit run app/Home.py`)
+  - Welcome page content
+  - Authentication UI (optional - doesn't block access to home)
+  - Uses Streamlit's native multi-page architecture (pages auto-discovered)
 
 **Function Modules (`app/func/`):**
 Reusable functions for API calls, data processing, and utilities:
-- **`auth.py`**: Spotify OAuth authentication, credential management, token handling
-- **`data_fetching.py`**: API calls to Spotify Web API (fetch tracks, artists, playlists, audio features)
-- **`data_processing.py`**: Transform API responses into processed DataFrames, apply feature engineering
-- **`visualizations.py`**: Plotly chart generation functions for all visualizations
+- **`auth.py`**: Spotify OAuth authentication, credential management, session state initialization, token handling
+- **`page_auth.py`**: Shared authentication wrapper (`require_auth()`) used by all pages
+- **`data_fetching.py`**: API calls to Spotify Web API (fetch tracks, artists, playlists, audio features) with caching
+- **`data_processing.py`**: Transform API responses into processed DataFrames, apply feature engineering, diversity calculations
+- **`visualizations.py`**: Plotly chart generation functions (9 visualization functions with Spotify theming)
+- **`ui_components.py`**: Page configuration, custom CSS styling, reusable UI elements
+- **`s3_storage.py`**: Cloudflare R2 upload/download functions
+- **`data_collection.py`**: Snapshot collection and metrics computation
 
 **Page Modules (`app/pages/`):**
-Individual Streamlit pages using session state for navigation:
-- **`dashboard.py`**: Overview page with key metrics and temporal patterns
-- **`analytics.py`**: Advanced analytics with audio features and mood analysis
-- **`recent_listening.py`**: Detailed view of recently played tracks
-- **`top_tracks.py`**: Top tracks across different time ranges
-- **`playlists.py`**: Playlist overview and management
-- **`deep_user.py`**: Historical analytics page showing long-term trends and patterns
+Individual Streamlit pages - automatically discovered and added to navigation:
+- **`1_Dashboard.py`**: Overview page with key metrics, temporal patterns, and artist analysis
+- **`2_Advanced_Analytics.py`**: Advanced analytics with audio features, mood analysis, and feature distributions
+- **`3_Recent_Listening.py`**: Detailed timeline of recently played tracks with downloadable CSV
+- **`4_Top_Tracks.py`**: Top tracks across different time ranges with audio profiles
+- **`5_Playlists.py`**: Playlist overview with metadata and Spotify links
+- **`6_Deep_User.py`**: Historical analytics showing long-term trends and patterns
+
+**IMPORTANT**: Page filenames should NEVER contain emojis. Use simple alphanumeric characters, underscores, and numbers only.
 
 **Design Principles:**
-- Use `st.session_state` for navigation and shared data between pages
+- **Streamlit native multi-page**: Pages in `app/pages/` are automatically discovered and added to sidebar navigation
+- **Numbered prefixes**: Files prefixed with numbers (1_, 2_, etc.) control display order in navigation
+- **NO EMOJIS IN FILENAMES**: Never use emojis in Python filenames - causes encoding issues across platforms
+- Use `st.session_state` for shared data across pages (authentication tokens, user data)
 - Import functions from `app/func/` modules (avoid duplicating code across pages)
-- Each page module should be self-contained and focused on a single feature area
-- Keep `main.py` as the main orchestrator (routing, auth flow, sidebar)
+  - The `app/func/__init__.py` exports all functions for clean imports
+  - Example: `from func.page_auth import require_auth`
+- Each page script is standalone and executes top-to-bottom
+- All authenticated pages call `require_auth()` at the start:
+  ```python
+  from func.page_auth import require_auth
+  sp, profile = require_auth()
+  if not sp:
+      st.warning("Please connect to continue")
+      st.stop()
+  ```
 
 ### Data Collection & Storage (Deep User Analytics)
 
@@ -281,7 +343,7 @@ R2_CUSTOM_DOMAIN=s3.diferdinando.com
 - Region: Western North America (WNAM)
 - Account ID: `24df8bb5d20dca402dfc277d4c38cc80`
 
-See `R2_SETUP.md` for detailed setup instructions.
+See `docs/INTEGRATION_GUIDE.md` for detailed setup instructions.
 
 **Implementation Modules:**
 - `app/func/s3_storage.py`: R2 upload/download functions using boto3 with custom endpoint
@@ -310,11 +372,12 @@ See `R2_SETUP.md` for detailed setup instructions.
    - `plot_correlation_matrix()`: Feature correlation heatmap
    - `plot_top_artists_genres()`: Bar charts for top items
 
-5. **Streamlit Dashboard** (`app/main.py`)
+5. **Streamlit Dashboard** (`app/Home.py`)
    - OAuth authentication with Spotify API
    - Session-based token management (multi-user support)
    - Interactive visualizations with Plotly
    - Real-time data fetching from user's Spotify account
+   - Cloudflare R2 integration for historical data storage
 
 
 ### Module Usage Guide
@@ -508,21 +571,25 @@ Implement clustering to automatically classify activities based on audio feature
 │   ├── feature_engineering.py    # Composite features, context classification
 │   └── visualization.py          # Reusable plotting functions
 │
-├── app/                          # Streamlit application
-│   ├── main.py      # Main entry point - run this file
-│   ├── func/                     # Function modules (planned structure)
-│   │   ├── __init__.py
+├── app/                          # Streamlit application (native multi-page)
+│   ├── Home.py                   # Home page and main entry point
+│   ├── func/                     # Function modules
+│   │   ├── __init__.py           # Exports all functions
 │   │   ├── auth.py               # Authentication & OAuth functions
-│   │   ├── data_fetching.py      # Spotify API data fetching
+│   │   ├── page_auth.py          # Shared authentication wrapper
+│   │   ├── data_fetching.py      # Spotify API data fetching (with caching)
 │   │   ├── data_processing.py    # Data transformation & processing
-│   │   └── visualizations.py     # Plotting and chart functions
-│   └── pages/                    # Streamlit pages (planned structure)
-│       ├── __init__.py
-│       ├── dashboard.py          # Main dashboard page
-│       ├── analytics.py          # Advanced analytics page
-│       ├── recent_listening.py   # Recent listening page
-│       ├── top_tracks.py         # Top tracks page
-│       └── playlists.py          # Playlists page
+│   │   ├── visualizations.py     # Plotly chart generation (Spotify theming)
+│   │   ├── ui_components.py      # Page config, CSS styling
+│   │   ├── s3_storage.py         # Cloudflare R2 storage functions
+│   │   └── data_collection.py    # Snapshot collection & metrics
+│   └── pages/                    # Streamlit pages (auto-discovered)
+│       ├── 1_Dashboard.py        # Main dashboard page
+│       ├── 2_Advanced_Analytics.py    # Advanced analytics page
+│       ├── 3_Recent_Listening.py      # Recent listening page
+│       ├── 4_Top_Tracks.py       # Top tracks page
+│       ├── 5_Playlists.py        # Playlists page
+│       └── 6_Deep_User.py        # Historical analytics page
 │
 ├── data/                         # Data files (git-ignored except README)
 │   ├── README.md                 # Dataset download instructions
@@ -570,12 +637,49 @@ git merge dev
 git push origin main
 ```
 
+**Note**: Currently on `dev` branch. The app has been fully migrated to Streamlit's native multi-page architecture.
+
 **Important Notes:**
 - Always commit with clear, descriptive messages
 - Use descriptive branch names for features (e.g., `feature/playlist-health-metrics`)
 - Review changes with `git diff` before committing
 
+## Data Collection System
+
+### Current Implementation
+The app includes a manual data collection system accessible via the "📸 Collect Snapshot" button in the sidebar after authentication.
+
+**What Gets Collected:**
+- Recent tracks (20 items) with audio features
+- Top tracks for all time ranges (20 items each: short/medium/long term)
+- Top artists for all time ranges (20 items each: short/medium/long term)
+- Computed metrics (diversity scores, averages, context distributions)
+
+**Storage:**
+- Data stored in Cloudflare R2 (S3-compatible) as Parquet files
+- Structure: `ime565spotify/users/{user_id}/snapshots/{timestamp}_{data_type}.parquet`
+- 8 files per snapshot (recent_tracks, 3×top_tracks, 3×top_artists, metrics)
+
+**Rate Limiting:**
+- 0.5s delay between API batches
+- 0.2s delay between R2 uploads
+- Try-catch wrappers on all API calls
+- Collection takes ~5-10 seconds
+
+### Future Improvements (See api_mitigation.md)
+A detailed plan exists in `api_mitigation.md` for transforming data collection into an engaging experience:
+- Dedicated loading page with mini-game
+- 1000 rotating Spotify facts
+- Progress indicators
+- Restore full 50-item collections with better rate limit handling
+- Exponential backoff and retry logic
+
 ## Important Considerations
+
+### Code Style
+- **NEVER use emojis in filenames** - causes cross-platform encoding issues
+- Use only alphanumeric characters, underscores, and numbers in file/folder names
+- Emojis are fine in UI text, markdown, and comments - just not filenames
 
 ### Security
 - Never commit `.env` file with actual Spotify API credentials
