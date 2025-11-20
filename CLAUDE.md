@@ -9,7 +9,42 @@ This is a multi-phase Spotify analytics platform project for IME 565 (Predictive
 **Team**: Nicolo DiFerdinando, Joe Mascher, Rithvik Shetty
 **Course**: IME 565, Fall Quarter 2025
 
-**Current Phase**: Phase 1 Complete - Real data collection system implemented
+**Current Phase**: Phase 1 - Foundation analytics using Kaggle datasets and initial Streamlit dashboard
+
+## Implementation Status
+
+### ✅ Currently Implemented
+- **Data processing pipeline** (`src/data_processing.py`)
+  - Multi-encoding CSV loader
+  - Data cleaning and validation
+  - Audio feature identification
+- **Feature engineering** (`src/feature_engineering.py`)
+  - Composite metrics (mood, grooviness, focus, relaxation)
+  - Context classification (5 categories)
+- **Visualization modules** (`src/visualization.py`)
+  - Distribution plots, correlation matrices
+  - Top artists/genres charts
+- **Streamlit dashboard** (fully modularized)
+  - `app/Home.py` - Home page and main entry point for multi-page app
+  - `app/func/` - Function modules (auth, data fetching, processing, visualizations, UI, S3 storage, data collection)
+  - `app/pages/` - Page modules (dashboard, analytics, recent listening, top tracks, playlists, deep user)
+  - OAuth authentication
+  - Real-time Spotify data fetching
+  - Interactive visualizations
+  - Cloudflare R2 storage for historical data
+- **Jupyter notebook** (`notebooks/01_Phase1_EDA.ipynb`)
+  - Complete EDA workflow
+
+### 📋 Planned (Not Yet Implemented)
+- **Data collection scripts** (planned `scripts/` directory)
+  - `spotify_auth.py` - Multi-user OAuth
+  - `collect_spotify_data.py` - API data collection
+  - `enrich_with_audio_features.py` - Feature enrichment
+  - `merge_team_data.py` - Team data merging
+- **Phase 2 features**: Playlist intelligence, health metrics
+- **Phase 3 features**: ML models, predictive recommendations
+
+**Note**: The `scripts/` directory and data collection scripts don't exist yet. Phase 1 focuses on analysis using Kaggle datasets.
 
 ## Development Phases
 
@@ -38,23 +73,122 @@ The project follows a three-phase development strategy:
 - **Data Processing**: Python with pandas, numpy
 - **Machine Learning**: scikit-learn, XGBoost
 - **Data Visualization**: Plotly, Matplotlib, Seaborn
-- **API Integration**: Spotipy (Spotify API wrapper)
+- **API Integration**: Spotipy (Spotify API wrapper) [https://spotipy.readthedocs.io/en/latest/]
+
+## Common Development Workflows
+
+### Adding a New Streamlit Page
+
+Streamlit automatically discovers pages in the `app/pages/` directory. To add a new page:
+
+1. **Create page file** in `app/pages/` with numbered prefix:
+```python
+# File: app/pages/7_Your_Page.py
+import streamlit as st
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from func.ui_components import apply_page_config, get_custom_css
+from func.page_auth import require_auth
+
+# Apply page config and styling
+apply_page_config()
+st.markdown(get_custom_css(), unsafe_allow_html=True)
+
+# Require authentication
+sp, profile = require_auth()
+if not sp:
+    st.warning("Please connect your Spotify account to view this page.")
+    st.stop()
+
+# Page content
+st.header("🎨 Your Page Title")
+# Your page logic here...
+```
+
+2. **File naming convention**:
+   - Prefix with a number to control order: `7_`, `8_`, etc.
+   - Use descriptive name with underscores: `Your_Page.py`
+   - **NEVER use emojis** in filenames (causes cross-platform issues)
+   - Result: `7_Your_Page.py`
+
+3. **That's it!** Streamlit automatically:
+   - Discovers the new page
+   - Adds it to sidebar navigation
+   - Renders the name in the menu
+
+**No need to modify** `Home.py` or any routing logic - Streamlit handles it automatically!
+
+### Adding a New Audio Feature or Composite Metric
+
+1. **Define the metric** in `src/feature_engineering.py`:
+```python
+def create_composite_features(df: pd.DataFrame) -> pd.DataFrame:
+    # Add your new metric
+    df['your_metric'] = (0.5 * df['energy'] + 0.5 * df['valence'])
+    return df
+```
+
+2. **Update visualizations** in `src/visualization.py` or `app/func/visualizations.py` if needed
+
+3. **Test in notebook** (`notebooks/01_Phase1_EDA.ipynb`):
+```python
+df_processed = create_composite_features(df_clean)
+print(df_processed['your_metric'].describe())
+```
+
+4. **Add to Streamlit dashboard** by creating a new page or adding to an existing page
+
+### Adding a New Context Classification Rule
+
+Edit the `classify_context()` function in `src/feature_engineering.py`:
+```python
+def classify_context(df: pd.DataFrame) -> pd.DataFrame:
+    def _classify(row):
+        # Add your rule (check existing rules first)
+        if row['energy'] > 0.8 and row['tempo'] > 140:
+            return 'running'
+        # ... existing rules
+
+    df['context'] = df.apply(_classify, axis=1)
+    return df
+```
+
+### Debugging Data Loading Issues
+
+If `load_spotify_data()` fails:
+1. Check file exists: `ls data/raw/*.csv`
+2. Try loading manually with different encodings:
+```python
+import pandas as pd
+encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+for enc in encodings:
+    try:
+        df = pd.read_csv('data/raw/dataset.csv', encoding=enc)
+        print(f"Success with {enc}")
+        break
+    except:
+        print(f"Failed with {enc}")
+```
+3. Check for required columns: `danceability`, `energy`, `valence`, etc.
 
 ## Key Commands
 
 ### Environment Setup
 ```bash
-# Option 1: Quick install using shell script (recommended for Mac)
-bash install_deps.sh
+# Create virtual environment (Python 3.12 recommended)
+python3.12 -m venv venv
+source venv/bin/activate  # Mac/Linux
+# venv\Scripts\activate   # Windows
 
-# Option 2: Manual install with requirements file
+# Install dependencies
 pip install -r requirements-mac.txt  # Mac
 pip install -r requirements-windows.txt  # Windows
 
-# Option 3: Minimal install (for Python 3.14 compatibility)
-bash quick_install.sh
-
-# Set up Spotify API credentials
+# Set up Spotify API credentials (for dashboard authentication)
 cp .env.example .env
 # Edit .env and add:
 #   SPOTIFY_CLIENT_ID=your_client_id_here
@@ -75,34 +209,30 @@ cp .env.example .env
 
 ### Running the Application
 ```bash
-# Run the Streamlit dashboard
-streamlit run app/spotify_dashboard.py
+# Run the Streamlit dashboard (multi-page app)
+streamlit run app/Home.py
 
 # Run Jupyter notebook for exploratory data analysis
 jupyter notebook notebooks/01_Phase1_EDA.ipynb
-
-# Verify installation
-python -c 'import pandas, numpy, matplotlib, seaborn, plotly; print("All packages imported successfully!")'
 ```
 
-### Collecting Real Spotify Data
+### Jupyter Notebook Tips
 ```bash
-# Initial setup: Authenticate each team member (do once)
-python scripts/spotify_auth.py --user nicolo
-python scripts/spotify_auth.py --user joe
-python scripts/spotify_auth.py --user rithvik
+# Launch notebook server
+jupyter notebook
 
-# Full collection (run weekly)
-python scripts/collect_spotify_data.py --user all
-python scripts/enrich_with_audio_features.py --user all
-python scripts/merge_team_data.py
+# If kernel issues occur, reinstall kernel
+python -m ipykernel install --user --name=venv --display-name "Python (Spotify Analytics)"
 
-# Quick update (recently played only)
-python scripts/collect_spotify_data.py --user all --recently-played-only
-python scripts/enrich_with_audio_features.py --user all
-python scripts/merge_team_data.py
+# List installed kernels
+jupyter kernelspec list
+```
 
-# Output: data/team_listening_history.csv
+### Running Tests
+```bash
+# Currently no tests implemented
+# Tests directory: tests/
+# Planned: pytest for unit tests in Phase 2
 ```
 
 ## Architecture Notes
@@ -112,67 +242,198 @@ python scripts/merge_team_data.py
 This project follows standard data science practices:
 - **`notebooks/`**: Exploration and analysis (Jupyter notebooks)
 - **`src/`**: Reusable Python modules (imported by notebooks and app)
-- **`app/`**: Production Streamlit dashboard
-- **`scripts/`**: Data collection automation (Spotify API)
+- **`app/`**: Streamlit dashboard with Spotify authentication
+- **`data/`**: Kaggle datasets and processed outputs
+- **`docs/`**: Project documentation and guides
 
 **Golden Rule**: Extract shared code from notebooks to `src/`, import from both notebooks and app.
 
-### Data Collection Pipeline (scripts/)
+### Streamlit App Structure
 
-The 4-script pipeline collects real team listening data:
+The Streamlit dashboard uses **Streamlit's native multi-page app** structure with automatic navigation:
 
-1. **`spotify_auth.py`**: OAuth authentication (do once per team member)
-   - Multi-user token management
-   - Automatic token refresh
-   - Browser-based OAuth flow
+**Main Entry Point:**
+- **`app/Home.py`**: The home page and entry point (`streamlit run app/Home.py`)
+  - Welcome page content
+  - Authentication UI (optional - doesn't block access to home)
+  - Uses Streamlit's native multi-page architecture (pages auto-discovered)
 
-2. **`collect_spotify_data.py`**: Fetch listening history from Spotify API
-   - Recently played tracks (last 50 with timestamps)
-   - Top tracks/artists (short/medium/long term)
-   - User playlists metadata
+**Function Modules (`app/func/`):**
+Reusable functions for API calls, data processing, and utilities:
+- **`auth.py`**: Spotify OAuth authentication, credential management, session state initialization, token handling
+- **`page_auth.py`**: Shared authentication wrapper (`require_auth()`) used by all pages
+- **`data_fetching.py`**: API calls to Spotify Web API (fetch tracks, artists, playlists, audio features) with caching
+- **`data_processing.py`**: Transform API responses into processed DataFrames, apply feature engineering, diversity calculations
+- **`visualizations.py`**: Plotly chart generation functions (9 visualization functions with Spotify theming)
+- **`ui_components.py`**: Page configuration, custom CSS styling, reusable UI elements
+- **`s3_storage.py`**: Cloudflare R2 upload/download functions
+- **`data_collection.py`**: Snapshot collection and metrics computation
 
-3. **`enrich_with_audio_features.py`**: Add audio features and derived metrics
-   - Fetch audio features from Spotify API (batched)
-   - Fallback to Kaggle database for missing tracks
-   - Compute composite scores (mood, grooviness, focus, relaxation)
-   - Infer context (workout, focus, party, commute, sleep)
-   - Add temporal features (hour, day, weekend, season)
+**Page Modules (`app/pages/`):**
+Individual Streamlit pages - automatically discovered and added to navigation:
+- **`1_Dashboard.py`**: Overview page with key metrics, temporal patterns, and artist analysis
+- **`2_Advanced_Analytics.py`**: Advanced analytics with audio features, mood analysis, and feature distributions
+- **`3_Recent_Listening.py`**: Detailed timeline of recently played tracks with downloadable CSV
+- **`4_Top_Tracks.py`**: Top tracks across different time ranges with audio profiles
+- **`5_Playlists.py`**: Playlist overview with metadata and Spotify links
+- **`6_Deep_User.py`**: Historical analytics showing long-term trends and patterns
 
-4. **`merge_team_data.py`**: Combine all team members into unified dataset
-   - Outputs: `data/team_listening_history.csv`
+**IMPORTANT**: Page filenames should NEVER contain emojis. Use simple alphanumeric characters, underscores, and numbers only.
 
-### Data Processing Modules (src/)
+**Design Principles:**
+- **Streamlit native multi-page**: Pages in `app/pages/` are automatically discovered and added to sidebar navigation
+- **Numbered prefixes**: Files prefixed with numbers (1_, 2_, etc.) control display order in navigation
+- **NO EMOJIS IN FILENAMES**: Never use emojis in Python filenames - causes encoding issues across platforms
+- Use `st.session_state` for shared data across pages (authentication tokens, user data)
+- Import functions from `app/func/` modules (avoid duplicating code across pages)
+  - The `app/func/__init__.py` exports all functions for clean imports
+  - Example: `from func.page_auth import require_auth`
+- Each page script is standalone and executes top-to-bottom
+- All authenticated pages call `require_auth()` at the start:
+  ```python
+  from func.page_auth import require_auth
+  sp, profile = require_auth()
+  if not sp:
+      st.warning("Please connect to continue")
+      st.stop()
+  ```
 
-**`data_processing.py`**: Loading and cleaning functions
-- `load_spotify_data()`: Auto-detect CSV encoding, load Kaggle datasets
-- `clean_dataset()`: Remove duplicates, invalid loudness (>0 dB), short tracks (<5s)
-- `identify_audio_features()`: Detect which columns contain audio features
+### Data Collection & Storage (Deep User Analytics)
 
-**`feature_engineering.py`**: Composite metrics and classification
-- `create_composite_features()`: Mood, grooviness, focus, relaxation scores
-- `classify_context()`: Rule-based context categorization (5 categories)
-- Formulas use weighted combinations of audio features
+The app automatically collects and stores user listening data to enable longitudinal analysis:
 
-**`visualization.py`**: Reusable plotting functions
-- `plot_feature_distributions()`: Histograms for audio features
-- `plot_correlation_matrix()`: Feature correlation heatmap
-- `plot_top_artists_genres()`: Bar charts for top items
+**Storage Backend:**
+- **Cloudflare R2** (S3-compatible object storage)
+- Parquet file format for efficient storage and querying
+- Organized by user ID and timestamp
+
+**Data Collection Trigger:**
+- Automatically collects data on every app session (when user authenticates)
+- Captures: recently played tracks, top tracks/artists (all time ranges), computed metrics
+- Stored in R2 bucket with structure: `users/{user_id}/snapshots/{timestamp}_{data_type}.parquet`
+
+**Collected Data Types:**
+1. **Recent Tracks** (`recent_tracks.parquet`): Last 50 played tracks with audio features, timestamps, and composite metrics
+2. **Top Tracks** (`top_tracks_short/medium/long.parquet`): Top 50 tracks for each time range with audio features
+3. **Top Artists** (`top_artists_short/medium/long.parquet`): Top 50 artists for each time range with genres and popularity
+4. **Computed Metrics** (`metrics.parquet`): Aggregated metrics including diversity scores, average audio features, context distributions
+
+**Deep User Page Features:**
+- **Artist Evolution**: Track how your top artists change over time, genre trends by month
+- **Listening Patterns**: Daily activity, hour-of-day patterns, day-of-week patterns over time
+- **Team Comparison**: Compare listening habits with team members (taste overlap, diversity, etc.)
+- **Metrics Over Time**: Visualize audio feature trends, diversity scores, context distributions
+
+**Configuration:**
+Required environment variables in `.env`:
+```
+# Required
+R2_ACCESS_KEY_ID=your_r2_access_key_id
+R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
+R2_BUCKET_NAME=ime565spotify
+
+# Use custom domain (recommended) OR account ID
+R2_CUSTOM_DOMAIN=s3.diferdinando.com
+# CLOUDFLARE_ACCOUNT_ID=24df8bb5d20dca402dfc277d4c38cc80
+```
+
+**Your R2 Bucket Configuration:**
+- Bucket Name: `ime565spotify`
+- Custom Domain: `s3.diferdinando.com` (configured with TLS 1.0)
+- Region: Western North America (WNAM)
+- Account ID: `24df8bb5d20dca402dfc277d4c38cc80`
+
+See `docs/INTEGRATION_GUIDE.md` for detailed setup instructions.
+
+**Implementation Modules:**
+- `app/func/s3_storage.py`: R2 upload/download functions using boto3 with custom endpoint
+- `app/func/data_collection.py`: Snapshot collection, metric computation, automatic uploads
+- `app/pages/deep_user.py`: Historical analytics visualizations and insights
+
+### Data Pipeline (Current Implementation)
+
+**Phase 1 uses Kaggle public datasets** for initial analysis:
+
+1. **Data Loading** (`src/data_processing.py`)
+   - `load_spotify_data()`: Auto-detect CSV encoding, load datasets from `data/raw/`
+   - Supports multiple encodings (utf-8, latin-1, iso-8859-1, cp1252)
+   - Prioritizes `dataset.csv` if available
+
+2. **Data Cleaning** (`src/data_processing.py`)
+   - `clean_dataset()`: Remove duplicates, invalid loudness (>0 dB), short tracks (<5s)
+   - `identify_audio_features()`: Detect which columns contain Spotify audio features
+
+3. **Feature Engineering** (`src/feature_engineering.py`)
+   - `create_composite_features()`: Mood, grooviness, focus, relaxation scores
+   - `classify_context()`: Rule-based context categorization (workout, focus, party, relaxation, general)
+
+4. **Visualization** (`src/visualization.py`)
+   - `plot_feature_distributions()`: Histograms for audio features
+   - `plot_correlation_matrix()`: Feature correlation heatmap
+   - `plot_top_artists_genres()`: Bar charts for top items
+
+5. **Streamlit Dashboard** (`app/Home.py`)
+   - OAuth authentication with Spotify API
+   - Session-based token management (multi-user support)
+   - Interactive visualizations with Plotly
+   - Real-time data fetching from user's Spotify account
+   - Cloudflare R2 integration for historical data storage
+
+
+### Module Usage Guide
+
+**Working with `src/data_processing.py`:**
+```python
+from src.data_processing import load_spotify_data, clean_dataset, identify_audio_features
+
+# Load dataset (tries multiple encodings automatically)
+df, filename = load_spotify_data(data_dir='data/raw')
+
+# Clean the data
+df_clean = clean_dataset(df)
+
+# Identify audio feature columns
+audio_features = identify_audio_features(df_clean)
+```
+
+**Working with `src/feature_engineering.py`:**
+```python
+from src.feature_engineering import create_composite_features, classify_context
+
+# Create composite scores
+df_with_features = create_composite_features(df_clean)
+# Adds: mood_score, grooviness, focus_score, relaxation_score
+
+# Classify listening context
+df_with_context = classify_context(df_with_features)
+# Adds: context column (workout, focus, party, relaxation, general)
+```
+
+**Working with `src/visualization.py`:**
+```python
+from src.visualization import plot_feature_distributions, plot_correlation_matrix
+
+# Visualize audio feature distributions
+plot_feature_distributions(df, audio_features)
+
+# Create correlation heatmap
+plot_correlation_matrix(df, audio_features)
+```
 
 ### Jupyter Notebook Workflow (notebooks/01_Phase1_EDA.ipynb)
 
-Analysis pipeline:
-1. Import from `src/` modules (data_processing, feature_engineering, visualization)
-2. Load data using `load_spotify_data()`
+Standard analysis pipeline:
+1. Import from `src/` modules
+2. Load data using `load_spotify_data('data/raw')`
 3. Clean with `clean_dataset()`
 4. Engineer features with `create_composite_features()` and `classify_context()`
 5. Visualize using functions from `visualization.py`
 6. Export processed data to `data/processed/`
 
-**Key feature columns**:
-- Core audio: danceability, energy, valence, acousticness, instrumentalness, speechiness
-- Metadata: track_name, artists, album_name, track_genre, popularity
-- Composite: mood_score, grooviness, focus_score, relaxation_score, context
-- Temporal (from real data): played_at, hour, day_of_week, is_weekend, season
+**Expected DataFrame columns after processing**:
+- **Core audio features**: danceability, energy, valence, acousticness, instrumentalness, speechiness, tempo, loudness, liveness
+- **Metadata**: track_name, artists, album_name, track_genre (if available), popularity
+- **Composite features**: mood_score, grooviness, focus_score, relaxation_score, context
 
 ### Spotify API Authentication (for Streamlit app)
 - Use **session-based cache handler** for multi-user Streamlit deployment
@@ -231,27 +492,25 @@ Spotify provides machine-generated audio features (0.0-1.0 scale for most):
 
 ## Data Sources
 
-### Real Team Listening Data (Primary - Implemented)
-**Collected via scripts pipeline**:
-- Recently played tracks with timestamps (last 50 per user)
-- Top tracks/artists across time ranges (short/medium/long term)
-- Complete audio features from Spotify API
-- Fallback to Kaggle database for missing features
-- **Output**: `data/team_listening_history.csv`
-- **Timeline**: Collected weekly throughout project (Weeks 7-10)
+### Kaggle Public Datasets (Current Implementation)
+**Primary data source for Phase 1**:
+- **Spotify Tracks Dataset**: ~114,000 tracks with comprehensive audio features (recommended)
+  - Download: https://www.kaggle.com/datasets/maharshipandya/-spotify-tracks-dataset
+- **Top Spotify Songs 2023**: ~50,000 tracks with popularity metrics
+  - Download: https://www.kaggle.com/datasets/nelgiriyewithana/top-spotify-songs-2023
+- **Spotify 1921-2020**: 160k+ historical tracks
+  - Download: https://www.kaggle.com/datasets/yamaerenay/spotify-dataset-19212020-600k-tracks
+- **Location**: Place downloaded CSVs in `data/raw/`
+- **Required columns**: track_name, artists, audio features (danceability, energy, valence, etc.)
 
-### Kaggle Public Datasets (Supplementary)
-**For audio feature fallback and benchmarking**:
-- Spotify Tracks Dataset: ~114,000 tracks with comprehensive audio features
-- Top Spotify Songs 2023: ~50,000 tracks with popularity metrics
-- Spotify 1921-2020: 160k+ tracks
-- **Location**: `data/raw/` (download manually from Kaggle)
-- **Use case**: Enrich team data with features for older/obscure tracks
-
-### Optional: Spotify Privacy Export
-- Complete listening history (JSON format, 3-30 days delivery time)
-- Provides historical data beyond API's 50-track limit
-- **Location**: `data/personal/` if obtained
+### Streamlit Dashboard Data (Real-Time)
+- Users authenticate with their Spotify account via OAuth
+- Dashboard fetches real-time data from Spotify API:
+  - Recently played tracks
+  - Top tracks and artists
+  - Saved playlists
+  - Audio features for tracks
+- Data is session-based and not persisted to disk
 
 ## Machine Learning Targets (Phase 3)
 
@@ -294,15 +553,14 @@ Implement clustering to automatically classify activities based on audio feature
 
 ```
 .
-├── README.md                     # Project overview
+├── README.md                     # Project overview and quick start
 ├── CLAUDE.md                     # This file - development guide
 ├── LICENSE
 ├── .env.example                  # Spotify API credentials template
 ├── .gitignore                    # Git ignore rules
 ├── requirements-mac.txt          # Python dependencies for Mac
 ├── requirements-windows.txt      # Python dependencies for Windows
-├── install_deps.sh               # Shell script for installing dependencies
-├── quick_install.sh              # Minimal install for Python 3.14
+├── SpotifyDevoloperAppPage.png  # Documentation screenshot
 │
 ├── notebooks/                    # Jupyter notebooks for analysis
 │   └── 01_Phase1_EDA.ipynb       # Phase 1: Exploratory Data Analysis
@@ -313,44 +571,121 @@ Implement clustering to automatically classify activities based on audio feature
 │   ├── feature_engineering.py    # Composite features, context classification
 │   └── visualization.py          # Reusable plotting functions
 │
-├── app/                          # Streamlit application
-│   ├── spotify_dashboard.py      # Main Streamlit dashboard (empty - to be built)
-│   ├── pages/                    # Multi-page app structure (empty)
-│   └── components/               # Reusable UI components (empty)
-│
-├── scripts/                      # Data collection automation
-│   ├── README.md                 # Scripts documentation
-│   ├── spotify_auth.py           # OAuth authentication for Spotify API
-│   ├── collect_spotify_data.py   # Fetch listening history from Spotify
-│   ├── enrich_with_audio_features.py  # Add audio features and metrics
-│   └── merge_team_data.py        # Combine team members into unified dataset
+├── app/                          # Streamlit application (native multi-page)
+│   ├── Home.py                   # Home page and main entry point
+│   ├── func/                     # Function modules
+│   │   ├── __init__.py           # Exports all functions
+│   │   ├── auth.py               # Authentication & OAuth functions
+│   │   ├── page_auth.py          # Shared authentication wrapper
+│   │   ├── data_fetching.py      # Spotify API data fetching (with caching)
+│   │   ├── data_processing.py    # Data transformation & processing
+│   │   ├── visualizations.py     # Plotly chart generation (Spotify theming)
+│   │   ├── ui_components.py      # Page config, CSS styling
+│   │   ├── s3_storage.py         # Cloudflare R2 storage functions
+│   │   └── data_collection.py    # Snapshot collection & metrics
+│   └── pages/                    # Streamlit pages (auto-discovered)
+│       ├── 1_Dashboard.py        # Main dashboard page
+│       ├── 2_Advanced_Analytics.py    # Advanced analytics page
+│       ├── 3_Recent_Listening.py      # Recent listening page
+│       ├── 4_Top_Tracks.py       # Top tracks page
+│       ├── 5_Playlists.py        # Playlists page
+│       └── 6_Deep_User.py        # Historical analytics page
 │
 ├── data/                         # Data files (git-ignored except README)
 │   ├── README.md                 # Dataset download instructions
-│   ├── raw/                      # Original datasets (Kaggle CSVs, Spotify JSON)
-│   ├── processed/                # Cleaned/processed data per user
-│   ├── personal/                 # User's personal Spotify data (optional)
-│   └── team_listening_history.csv  # Final merged team dataset (generated)
+│   ├── raw/                      # Kaggle CSVs go here
+│   ├── processed/                # Cleaned/processed outputs
+│   └── personal/                 # Optional: User's personal Spotify data
 │
-├── models/                       # Saved ML models (Phase 3)
-├── outputs/                      # Generated plots and reports
-├── tests/                        # Unit tests (empty - optional)
-└── docs/                         # Documentation
-    ├── PROJECT_STRUCTURE.md      # Detailed file organization
-    ├── QUICK_START_GUIDE.md      # Step-by-step data collection instructions
-    ├── SPOTIFY_DATA_COLLECTION_GUIDE.md  # Technical guide
-    ├── DATA_STRATEGY_ANALYSIS.md # Why real data vs Kaggle
-    ├── IMPLEMENTATION_SUMMARY.md # System overview
+├── tests/                        # Empty (planned for Phase 2)
+│   └── __init__.py
+├── models/                       # Empty (Phase 3: Saved ML models)
+├── outputs/                      # Empty (generated plots will go here)
+└── docs/                         # Project documentation
     ├── notes.md                  # Research notes
-    └── IME565_Project_Proposal_Final.md  # Full project proposal
+    ├── IME565_Project_Proposal_Final.md  # Full project proposal
+    └── *.md                      # Additional documentation files
 ```
 
+**Note**: The `scripts/` directory mentioned in some documentation does not yet exist. Data collection automation is planned for a future phase.
+
+## Git Workflow
+
+**Current Branch Structure:**
+- `main`: Production-ready code
+- `dev`: Development branch (current)
+
+**Making Changes:**
+```bash
+# Check current branch and status
+git status
+git branch
+
+# Before making changes, ensure you're on dev
+git checkout dev
+
+# After making changes
+git add <files>
+git commit -m "descriptive message"
+
+# Push to dev for review before merging to main
+git push origin dev
+
+# When ready for production
+git checkout main
+git merge dev
+git push origin main
+```
+
+**Note**: Currently on `dev` branch. The app has been fully migrated to Streamlit's native multi-page architecture.
+
+**Important Notes:**
+- Always commit with clear, descriptive messages
+- Use descriptive branch names for features (e.g., `feature/playlist-health-metrics`)
+- Review changes with `git diff` before committing
+
+## Data Collection System
+
+### Current Implementation
+The app includes a manual data collection system accessible via the "📸 Collect Snapshot" button in the sidebar after authentication.
+
+**What Gets Collected:**
+- Recent tracks (20 items) with audio features
+- Top tracks for all time ranges (20 items each: short/medium/long term)
+- Top artists for all time ranges (20 items each: short/medium/long term)
+- Computed metrics (diversity scores, averages, context distributions)
+
+**Storage:**
+- Data stored in Cloudflare R2 (S3-compatible) as Parquet files
+- Structure: `ime565spotify/users/{user_id}/snapshots/{timestamp}_{data_type}.parquet`
+- 8 files per snapshot (recent_tracks, 3×top_tracks, 3×top_artists, metrics)
+
+**Rate Limiting:**
+- 0.5s delay between API batches
+- 0.2s delay between R2 uploads
+- Try-catch wrappers on all API calls
+- Collection takes ~5-10 seconds
+
+### Future Improvements (See api_mitigation.md)
+A detailed plan exists in `api_mitigation.md` for transforming data collection into an engaging experience:
+- Dedicated loading page with mini-game
+- 1000 rotating Spotify facts
+- Progress indicators
+- Restore full 50-item collections with better rate limit handling
+- Exponential backoff and retry logic
+
 ## Important Considerations
+
+### Code Style
+- **NEVER use emojis in filenames** - causes cross-platform encoding issues
+- Use only alphanumeric characters, underscores, and numbers in file/folder names
+- Emojis are fine in UI text, markdown, and comments - just not filenames
 
 ### Security
 - Never commit `.env` file with actual Spotify API credentials
 - Client ID and Client Secret should be stored in environment variables
 - Use `.gitignore` to exclude sensitive files
+- `.spotify_cache/` tokens are also git-ignored for security
 
 ### User Experience
 - Provide explanations for recommendations (not black-box algorithms)
@@ -378,13 +713,10 @@ The platform differentiates from existing tools (Stats.fm, Obscurify, Spotify Wr
 
 For detailed information on specific topics:
 
-- **`docs/QUICK_START_GUIDE.md`**: Step-by-step data collection walkthrough (20-30 min first time)
-- **`docs/PROJECT_STRUCTURE.md`**: File organization philosophy and migration guide
-- **`docs/SPOTIFY_DATA_COLLECTION_GUIDE.md`**: Complete technical guide to data collection
-- **`docs/DATA_STRATEGY_ANALYSIS.md`**: Why real data vs Kaggle synthetic data
-- **`docs/IMPLEMENTATION_SUMMARY.md`**: Overview of the data collection system
-- **`scripts/README.md`**: Detailed documentation for each collection script
+- **`README.md`**: Project overview and quick start guide
 - **`docs/IME565_Project_Proposal_Final.md`**: Full project proposal and research foundation
+- **`docs/notes.md`**: Research notes and technical patterns
+- **`data/README.md`**: Kaggle dataset download instructions
 
 ## References
 
