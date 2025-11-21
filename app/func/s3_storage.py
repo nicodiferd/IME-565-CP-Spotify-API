@@ -9,6 +9,11 @@ import io
 import os
 from botocore.exceptions import ClientError, NoCredentialsError
 import streamlit as st
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# This is needed for Streamlit multi-page apps where each page runs independently
+load_dotenv()
 
 
 def get_s3_client():

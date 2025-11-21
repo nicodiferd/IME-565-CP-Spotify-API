@@ -1,6 +1,6 @@
 """
-Deep User Page
-Explore aggregated historical listening data and trends over time
+Deep User Analytics Page - First-Time User Optimized
+Show trends over time (requires multiple snapshots)
 """
 
 import streamlit as st
@@ -9,14 +9,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 import sys
 import os
+from datetime import datetime, timezone
 
 # Add parent directory to path to import from func
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from func.ui_components import apply_page_config, get_custom_css
 from func.page_auth import require_auth
-from func.s3_storage import load_all_user_data, get_bucket_name
+from func.dashboard_helpers import load_current_snapshot
 from func.data_collection import get_user_snapshot_count
+from func.s3_storage import load_all_user_data, get_bucket_name
 
 # Apply page configuration
 apply_page_config()
@@ -32,42 +34,161 @@ if not sp:
 # DEEP USER ANALYTICS PAGE
 # ============================================================================
 
-st.header("🔍 Deep User Analytics")
-st.markdown("Explore your listening history and trends over time")
+st.header("📊 Deep User Analytics")
+st.caption("Track your listening evolution over time")
 
 user_id = profile.get('id')
 bucket_name = get_bucket_name()
 
 if not bucket_name:
-    st.error("S3 bucket not configured. Please add S3_BUCKET_NAME to your .env file.")
+    st.error("S3 bucket not configured. Please add R2 credentials to your .env file.")
     st.stop()
 
-# Check if user has any data
+# Check snapshot count
 snapshot_count = get_user_snapshot_count(sp, user_id)
 
-if snapshot_count == 0:
-    st.info("📸 No historical data found. Data collection will start automatically on your next login!")
+# ============================================================================
+# FIRST-TIME USER EXPERIENCE (< 2 snapshots)
+# ============================================================================
+
+if snapshot_count < 2:
+    st.info(f"📅 **Current Status**: {snapshot_count} snapshot collected")
+
     st.markdown("""
-    ### What is Deep User Analytics?
+    <div style='background-color: #282828; padding: 2rem; border-radius: 10px; margin: 2rem 0;'>
+        <h3 style='color: #1DB954; margin-top: 0;'>🔮 What is Deep User Analytics?</h3>
+        <p style='line-height: 1.8; font-size: 1.05rem;'>
+            Deep User Analytics tracks how your listening habits <strong>evolve over time</strong>.
+            Since this requires multiple data snapshots, you'll need to return to see your musical journey unfold.
+        </p>
 
-    Deep User Analytics tracks your listening habits over time, allowing you to:
-    - See how your music taste evolves
-    - Track your top artists and genres across weeks/months
-    - Analyze listening patterns and behaviors
-    - Compare your taste with team members
+        <h4 style='color: #1DB954; margin-top: 1.5rem;'>What you'll see with more data:</h4>
+        <ul style='line-height: 2; font-size: 1.05rem;'>
+            <li>📈 <strong>Artist Evolution</strong>: How your top artists change week-over-week</li>
+            <li>🕐 <strong>Listening Patterns</strong>: Temporal shifts in your music habits</li>
+            <li>🎯 <strong>Taste Trajectory</strong>: Are you becoming more mainstream or niche?</li>
+            <li>🌍 <strong>Genre Drift</strong>: How your genre preferences evolve</li>
+            <li>🔍 <strong>Discovery Trends</strong>: Your exploration rate over time</li>
+        </ul>
 
-    **Data is collected automatically** every time you use the app.
-    """)
+        <h4 style='color: #1DB954; margin-top: 1.5rem;'>How it works:</h4>
+        <p style='line-height: 1.8; font-size: 1.05rem;'>
+            We automatically collect a snapshot every 24 hours when you visit the dashboard.
+            <strong>Come back in a few days</strong> to see your musical journey unfold!
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Show current snapshot preview
+    st.subheader("📸 Current Snapshot Preview")
+    st.caption("Here's what we captured today:")
+
+    try:
+        current_data = load_current_snapshot(user_id)
+
+        # Create tabs for preview
+        tab1, tab2, tab3 = st.tabs(["🎤 Top Artists", "🎵 Top Tracks", "⏱️ Recent Activity"])
+
+        with tab1:
+            st.markdown("**Top 10 Artists Right Now**")
+            st.caption("(Last 4 weeks)")
+
+            top_artists = current_data['top_artists']['short'].head(10)
+            st.dataframe(
+                top_artists[['rank', 'artist_name', 'popularity', 'genres']],
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with tab2:
+            st.markdown("**Top 10 Tracks Right Now**")
+            st.caption("(Last 4 weeks)")
+
+            top_tracks = current_data['top_tracks']['short'].head(10)
+            st.dataframe(
+                top_tracks[['rank', 'track_name', 'artist_name', 'popularity']],
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with tab3:
+            st.markdown("**Recent Listening Summary**")
+
+            recent = current_data['recent_tracks']
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Tracks Played", len(recent))
+            with col2:
+                st.metric("Unique Artists", recent['artist_name'].nunique())
+            with col3:
+                avg_pop = recent['popularity'].mean()
+                st.metric("Avg Popularity", f"{avg_pop:.0f}/100")
+
+            # Hour of day distribution
+            if 'hour_of_day' in recent.columns:
+                st.markdown("**Listening by Hour of Day**")
+
+                hourly_counts = recent['hour_of_day'].value_counts().sort_index()
+
+                fig = px.bar(
+                    x=hourly_counts.index,
+                    y=hourly_counts.values,
+                    labels={'x': 'Hour of Day', 'y': 'Number of Tracks'},
+                    title='When Do You Listen?'
+                )
+
+                fig.update_layout(
+                    plot_bgcolor='#121212',
+                    paper_bgcolor='#121212',
+                    font_color='#FFFFFF',
+                    xaxis=dict(tickmode='linear', tick0=0, dtick=2)
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Could not load current snapshot: {e}")
+
+    st.markdown("---")
+
+    # Show placeholder for future features
+    st.info("💡 **Coming Soon (after multiple snapshots):**")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        **📈 Artist Evolution Timeline**
+        - Track rank changes over time
+        - See which artists you're discovering
+        - Identify your musical phases
+        """)
+
+    with col2:
+        st.markdown("""
+        **🎯 Taste Trajectory**
+        - Mainstream score over time
+        - Genre diversity trends
+        - Musical explorer vs consistency score
+        """)
+
     st.stop()
 
-st.success(f"📊 Found {snapshot_count} historical snapshots")
+# ============================================================================
+# RETURNING USER EXPERIENCE (2+ snapshots)
+# ============================================================================
+
+st.success(f"✅ {snapshot_count} snapshots collected - showing historical analysis")
 
 # Tabs for different analyses
 tab1, tab2, tab3, tab4 = st.tabs([
     "🎵 Artist Evolution",
     "⏰ Listening Patterns",
-    "👥 Team Comparison",
-    "📈 Metrics Over Time"
+    "📈 Metrics Over Time",
+    "🎯 Taste Trajectory"
 ])
 
 # ============================================================================
@@ -78,7 +199,7 @@ with tab1:
     st.subheader("Artist & Genre Evolution")
 
     with st.spinner("Loading artist data..."):
-        # Load top artists data
+        # Load top artists data from ALL snapshots
         top_artists = load_all_user_data(bucket_name, user_id, 'top_artists')
 
         if top_artists.empty:
@@ -92,7 +213,11 @@ with tab1:
             time_range = st.selectbox(
                 "Select time range to analyze",
                 ["short_term", "medium_term", "long_term"],
-                format_func=lambda x: {"short_term": "Last 4 Weeks", "medium_term": "Last 6 Months", "long_term": "All Time"}[x]
+                format_func=lambda x: {
+                    "short_term": "Last 4 Weeks",
+                    "medium_term": "Last 6 Months",
+                    "long_term": "All Time"
+                }[x]
             )
 
             filtered_artists = top_artists[top_artists['time_range'] == time_range]
@@ -134,10 +259,14 @@ with tab1:
                 # Extract genres
                 all_genres = []
                 for _, row in filtered_artists.iterrows():
-                    genres = row['genres'].split(', ')
+                    genres_str = row.get('genres', '')
+                    if pd.isna(genres_str) or genres_str == '':
+                        continue
+
+                    genres = genres_str.split(', ') if isinstance(genres_str, str) else []
                     timestamp = row['timestamp']
                     for genre in genres:
-                        if genre:
+                        if genre and genre.strip():
                             all_genres.append({'genre': genre, 'timestamp': timestamp})
 
                 if all_genres:
@@ -169,6 +298,8 @@ with tab1:
                     )
 
                     st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No genre data available for this time range")
 
 # ============================================================================
 # TAB 2: LISTENING PATTERNS
@@ -178,7 +309,7 @@ with tab2:
     st.subheader("Listening Patterns Over Time")
 
     with st.spinner("Loading listening data..."):
-        # Load recent tracks data
+        # Load recent tracks data from ALL snapshots
         recent_tracks = load_all_user_data(bucket_name, user_id, 'recent_tracks')
 
         if recent_tracks.empty:
@@ -201,8 +332,7 @@ with tab2:
                 x='date',
                 y='tracks',
                 title='Daily Listening Activity',
-                labels={'date': 'Date', 'tracks': 'Tracks Played'},
-                color_discrete_sequence=['#1DB954']
+                labels={'date': 'Date', 'tracks': 'Tracks Played'}
             )
 
             fig.update_layout(
@@ -213,106 +343,42 @@ with tab2:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # Hour-of-day pattern
-            st.markdown("### Time-of-Day Listening Pattern")
+            # Hour of day heatmap
+            st.markdown("### Listening by Hour & Day of Week")
 
-            col1, col2 = st.columns(2)
+            hourly_weekly = recent_tracks.groupby(['day_of_week', 'hour']).size().reset_index(name='count')
 
-            with col1:
-                hourly_counts = recent_tracks['hour'].value_counts().sort_index()
+            # Order days
+            day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            hourly_weekly['day_of_week'] = pd.Categorical(hourly_weekly['day_of_week'], categories=day_order, ordered=True)
 
-                fig = go.Figure(data=[
-                    go.Bar(
-                        x=hourly_counts.index,
-                        y=hourly_counts.values,
-                        marker_color='#1DB954'
-                    )
-                ])
+            # Create heatmap
+            pivot_table = hourly_weekly.pivot(index='day_of_week', columns='hour', values='count').fillna(0)
 
-                fig.update_layout(
-                    title='Listening by Hour',
-                    xaxis_title='Hour (24h)',
-                    yaxis_title='Number of Tracks',
-                    plot_bgcolor='#121212',
-                    paper_bgcolor='#121212',
-                    font_color='#FFFFFF'
-                )
+            fig = px.imshow(
+                pivot_table,
+                title='Listening Heatmap (Hour x Day)',
+                labels=dict(x="Hour of Day", y="Day of Week", color="Tracks"),
+                color_continuous_scale='Viridis'
+            )
 
-                st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(
+                plot_bgcolor='#121212',
+                paper_bgcolor='#121212',
+                font_color='#FFFFFF'
+            )
 
-            with col2:
-                # Day of week pattern
-                day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                day_counts = recent_tracks['day_of_week'].value_counts().reindex(day_order, fill_value=0)
-
-                fig = go.Figure(data=[
-                    go.Bar(
-                        x=day_counts.index,
-                        y=day_counts.values,
-                        marker_color='#1DB954'
-                    )
-                ])
-
-                fig.update_layout(
-                    title='Listening by Day of Week',
-                    xaxis_title='Day',
-                    yaxis_title='Number of Tracks',
-                    plot_bgcolor='#121212',
-                    paper_bgcolor='#121212',
-                    font_color='#FFFFFF',
-                    xaxis_tickangle=-45
-                )
-
-                st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
 # ============================================================================
-# TAB 3: TEAM COMPARISON
+# TAB 3: METRICS OVER TIME
 # ============================================================================
 
 with tab3:
-    st.subheader("Team Comparison")
-
-    st.info("🚧 Team comparison features coming soon! This will show:")
-    st.markdown("""
-    - **Taste Overlap**: Artists and tracks you have in common with team members
-    - **Diversity Scores**: Compare artist/genre diversity across the team
-    - **Listening Patterns**: Who listens the most, and when
-    - **Music Explorer Score**: Who discovers new artists most frequently
-    - **Mood Profiles**: Compare average energy, valence, and mood scores
-    """)
-
-    # Placeholder for team comparison
-    st.markdown("### Your Listening Profile")
-
-    with st.spinner("Analyzing your data..."):
-        recent_tracks = load_all_user_data(bucket_name, user_id, 'recent_tracks')
-
-        if not recent_tracks.empty:
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                unique_artists = recent_tracks['artist_name'].nunique()
-                st.metric("Unique Artists", unique_artists)
-
-            with col2:
-                if 'energy' in recent_tracks.columns:
-                    avg_energy = recent_tracks['energy'].mean()
-                    st.metric("Avg Energy", f"{avg_energy:.2f}")
-
-            with col3:
-                if 'valence' in recent_tracks.columns:
-                    avg_valence = recent_tracks['valence'].mean()
-                    st.metric("Avg Mood", f"{avg_valence:.2f}")
-
-# ============================================================================
-# TAB 4: METRICS OVER TIME
-# ============================================================================
-
-with tab4:
-    st.subheader("Metrics Evolution")
+    st.subheader("Metrics Over Time")
 
     with st.spinner("Loading metrics..."):
-        # Load metrics data
+        # Load metrics from ALL snapshots
         metrics = load_all_user_data(bucket_name, user_id, 'metrics')
 
         if metrics.empty:
@@ -322,54 +388,18 @@ with tab4:
             metrics['timestamp'] = pd.to_datetime(metrics['snapshot_timestamp'])
             metrics = metrics.sort_values('timestamp')
 
-            # Audio feature trends
-            st.markdown("### Audio Feature Trends")
+            # Artist diversity over time
+            if 'recent_unique_artists' in metrics.columns and 'recent_unique_tracks' in metrics.columns:
+                st.markdown("### Artist Diversity Score")
 
-            audio_features = ['energy', 'valence', 'danceability', 'acousticness']
-            available_features = [f'recent_avg_{f}' for f in audio_features if f'recent_avg_{f}' in metrics.columns]
+                metrics['artist_diversity'] = metrics['recent_unique_artists'] / metrics['recent_unique_tracks'].replace(0, 1)
 
-            if available_features:
-                selected_features = st.multiselect(
-                    "Select features to visualize",
-                    available_features,
-                    default=available_features[:2],
-                    format_func=lambda x: x.replace('recent_avg_', '').title()
-                )
-
-                if selected_features:
-                    fig = go.Figure()
-
-                    for feature in selected_features:
-                        fig.add_trace(go.Scatter(
-                            x=metrics['timestamp'],
-                            y=metrics[feature],
-                            mode='lines+markers',
-                            name=feature.replace('recent_avg_', '').title()
-                        ))
-
-                    fig.update_layout(
-                        title='Audio Features Over Time',
-                        xaxis_title='Date',
-                        yaxis_title='Value',
-                        plot_bgcolor='#121212',
-                        paper_bgcolor='#121212',
-                        font_color='#FFFFFF',
-                        hovermode='x unified'
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
-
-            # Diversity trends
-            st.markdown("### Artist Diversity Over Time")
-
-            if 'recent_artist_diversity' in metrics.columns:
                 fig = px.line(
                     metrics,
                     x='timestamp',
-                    y='recent_artist_diversity',
-                    title='Artist Diversity Score',
-                    labels={'timestamp': 'Date', 'recent_artist_diversity': 'Diversity Score'},
-                    color_discrete_sequence=['#1DB954']
+                    y='artist_diversity',
+                    title='Artist Diversity Over Time',
+                    labels={'timestamp': 'Date', 'artist_diversity': 'Diversity Score'}
                 )
 
                 fig.update_layout(
@@ -380,32 +410,16 @@ with tab4:
 
                 st.plotly_chart(fig, use_container_width=True)
 
-            # Context distribution over time
-            st.markdown("### Listening Context Over Time")
+            # Average popularity over time
+            if 'recent_avg_popularity' in metrics.columns:
+                st.markdown("### Mainstream Score Over Time")
 
-            context_cols = [col for col in metrics.columns if col.startswith('recent_pct_')]
-
-            if context_cols:
-                context_df = metrics[['timestamp'] + context_cols].copy()
-
-                # Reshape for plotting
-                context_long = context_df.melt(
-                    id_vars=['timestamp'],
-                    value_vars=context_cols,
-                    var_name='context',
-                    value_name='percentage'
-                )
-
-                context_long['context'] = context_long['context'].str.replace('recent_pct_', '').str.title()
-
-                fig = px.area(
-                    context_long,
+                fig = px.line(
+                    metrics,
                     x='timestamp',
-                    y='percentage',
-                    color='context',
-                    title='Listening Context Distribution Over Time',
-                    labels={'timestamp': 'Date', 'percentage': 'Percentage', 'context': 'Context'},
-                    color_discrete_sequence=px.colors.sequential.Greens
+                    y='recent_avg_popularity',
+                    title='Average Track Popularity (Mainstream Score)',
+                    labels={'timestamp': 'Date', 'recent_avg_popularity': 'Avg Popularity (0-100)'}
                 )
 
                 fig.update_layout(
@@ -415,3 +429,32 @@ with tab4:
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
+
+                # Interpretation
+                latest_pop = metrics['recent_avg_popularity'].iloc[-1]
+                if latest_pop > 70:
+                    st.info(f"📈 Mainstream Listener: Your average popularity is {latest_pop:.0f}/100. You prefer popular hits!")
+                elif latest_pop < 40:
+                    st.info(f"🎵 Indie Explorer: Your average popularity is {latest_pop:.0f}/100. You prefer underground/niche artists!")
+                else:
+                    st.info(f"⚖️ Balanced Taste: Your average popularity is {latest_pop:.0f}/100. You enjoy a mix of popular and niche music!")
+
+# ============================================================================
+# TAB 4: TASTE TRAJECTORY
+# ============================================================================
+
+with tab4:
+    st.subheader("Taste Trajectory")
+    st.caption("How your musical preferences are evolving")
+
+    # Placeholder for future implementation
+    st.info("📊 Coming soon: Comprehensive taste trajectory analysis")
+
+    st.markdown("""
+    **Features planned:**
+    - Mainstream vs Niche trajectory
+    - Genre diversity score over time
+    - Musical Explorer vs Consistency classification
+    - Discovery rate (new artists per month)
+    - Mood score trends (if audio features available)
+    """)

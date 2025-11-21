@@ -13,8 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from func.ui_components import apply_page_config, get_custom_css
 from func.page_auth import require_auth
-from func.data_fetching import fetch_recently_played
-from func.data_processing import process_recent_tracks
+from func.dashboard_helpers import (
+    load_current_snapshot,
+    handle_missing_data,
+    display_sync_status,
+    enrich_with_audio_features
+)
 from func.visualizations import plot_recent_timeline
 
 # Apply page configuration
@@ -27,19 +31,36 @@ if not sp:
     st.warning("Please connect your Spotify account to view recent listening.")
     st.stop()
 
+user_id = profile['id']
+
+# ============================================================================
+# LOAD SNAPSHOT DATA
+# ============================================================================
+
+try:
+    data = load_current_snapshot(user_id)
+except Exception as e:
+    handle_missing_data(redirect_to_sync=True)
+
 # ============================================================================
 # RECENT LISTENING PAGE
 # ============================================================================
 
 st.header("🕒 Recent Listening")
 
-# Fetch data
-recent_items = fetch_recently_played(sp, limit=50)
-recent_df = process_recent_tracks(recent_items, sp)
+# Show sync status
+display_sync_status(data['metadata'])
+
+# Load recent tracks and enrich with audio features
+recent_df = data['recent_tracks'].copy()
 
 if recent_df.empty:
     st.warning("No recent listening data available.")
     st.stop()
+
+# Enrich with Kaggle audio features
+with st.spinner("Enriching with audio features..."):
+    recent_df = enrich_with_audio_features(recent_df, verbose=False)
 
 # Timeline visualization
 plot_recent_timeline(recent_df)
@@ -60,8 +81,10 @@ if 'mood_score' in recent_df.columns:
 display_df = recent_df[[col for col in base_cols if col in recent_df.columns]].copy()
 
 # Format columns
-display_df['played_at'] = display_df['played_at'].dt.strftime('%Y-%m-%d %H:%M')
-display_df['duration_min'] = display_df['duration_min'].round(2)
+if 'played_at' in display_df.columns:
+    display_df['played_at'] = display_df['played_at'].dt.strftime('%Y-%m-%d %H:%M')
+if 'duration_min' in display_df.columns:
+    display_df['duration_min'] = display_df['duration_min'].round(2)
 
 if 'mood_score' in display_df.columns:
     display_df['mood_score'] = display_df['mood_score'].round(2)

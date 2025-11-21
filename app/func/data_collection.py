@@ -1,28 +1,29 @@
 """
-Data Collection Functions
-Collect user listening data and prepare for storage
+Data Collection Functions - First-Time User Optimized
+Collect comprehensive user listening data for instant dashboard value
 """
 
 import pandas as pd
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import sys
 import time
+import json
 
-# Import data fetching and processing functions
-from app.func.data_fetching import (
+# Import data fetching and processing functions using relative imports
+from .data_fetching import (
     fetch_recently_played,
     fetch_top_tracks,
     fetch_top_artists,
     fetch_user_profile
 )
-from app.func.data_processing import (
+from .data_processing import (
     process_recent_tracks,
     process_top_tracks,
     calculate_diversity_score
 )
-from app.func.s3_storage import upload_dataframe_to_s3, get_bucket_name
+from .s3_storage import upload_dataframe_to_s3, get_bucket_name, get_s3_client
 
 # Import feature engineering from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -33,9 +34,380 @@ except ImportError:
     classify_context = None
 
 
+def should_refresh_data(user_id):
+    """
+    Check if we need to refresh current snapshot
+    Returns True if >24 hours since last sync OR no data exists
+
+    Args:
+        user_id: Spotify user ID
+
+    Returns:
+        bool: True if refresh needed
+    """
+    try:
+        bucket_name = get_bucket_name()
+        if not bucket_name:
+            return True
+
+        s3_client = get_s3_client()
+
+        # Try to load metadata from current/ directory
+        metadata_key = f'users/{user_id}/current/metadata.json'
+
+        try:
+            response = s3_client.get_object(Bucket=bucket_name, Key=metadata_key)
+            metadata_content = response['Body'].read().decode('utf-8')
+            metadata = json.loads(metadata_content)
+
+            last_sync = datetime.fromisoformat(metadata['last_sync'])
+            hours_since = (datetime.now(timezone.utc) - last_sync).total_seconds() / 3600
+
+            return hours_since >= 24  # Refresh if >24 hours
+        except:
+            return True  # No metadata found, refresh needed
+
+    except Exception as e:
+        print(f"Error checking refresh status: {e}")
+        return True  # Default to refresh on error
+
+
+def collect_comprehensive_snapshot(sp, user_id, force=False):
+    """
+    Collect comprehensive snapshot for all dashboards - First-time user optimized
+
+    Target: <90 seconds total
+    API Calls: 8 total (well within 180/min rate limit)
+
+    Collects:
+    - 50 recently played tracks
+    - Top 50 tracks (short/medium/long term)
+    - Top 50 artists (short/medium/long term)
+
+    Saves to:
+    - users/{user_id}/current/ → Used by all dashboards
+    - users/{user_id}/snapshots/{timestamp}/ → Used by Deep User page only
+
+    Args:
+        sp: Authenticated Spotipy client
+        user_id: Spotify user ID
+        force: Force refresh even if <24hrs
+
+    Returns:
+        tuple: (success: bool, snapshot_timestamp: str)
+    """
+    if not force and not should_refresh_data(user_id):
+        return False, None  # Skip refresh
+
+    print(f"🔄 Starting comprehensive data sync for {user_id}")
+    start_time = time.time()
+
+    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H-%M-%S')
+    timestamp_iso = datetime.now(timezone.utc).isoformat()
+
+    try:
+        # ========================================
+        # Step 1: User Profile (1 API call)
+        # ========================================
+        print("  📋 Fetching user profile...")
+        profile = fetch_user_profile(sp)
+        if not profile:
+            raise Exception("Failed to fetch user profile")
+
+        metadata = {
+            'last_sync': timestamp_iso,
+            'snapshot_timestamp': timestamp,
+            'user_id': user_id,
+            'display_name': profile.get('display_name'),
+            'country': profile.get('country'),
+            'product': profile.get('product'),
+            'api_version': '2025-11'
+        }
+
+        # ========================================
+        # Step 2: Recently Played (1 API call)
+        # ========================================
+        print("  🎵 Fetching recently played tracks...")
+        recent_items = fetch_recently_played(sp, limit=50)
+        if not recent_items:
+            raise Exception("Failed to fetch recent tracks")
+
+        recent_df = process_recent_tracks(recent_items, sp)
+        if recent_df.empty:
+            raise Exception("No recent tracks data")
+
+        recent_df['snapshot_timestamp'] = timestamp_iso
+        recent_df['user_id'] = user_id
+        time.sleep(0.5)  # Small delay between requests
+
+        # ========================================
+        # Step 3: Top Tracks - All Time Ranges (3 API calls)
+        # ========================================
+        print("  🏆 Fetching top tracks (short-term)...")
+        top_tracks_short = fetch_top_tracks(sp, time_range='short_term', limit=50)
+        tracks_short_df = process_top_tracks_data(top_tracks_short, sp, 'short_term', timestamp_iso, user_id)
+        time.sleep(0.5)
+
+        print("  🏆 Fetching top tracks (medium-term)...")
+        top_tracks_medium = fetch_top_tracks(sp, time_range='medium_term', limit=50)
+        tracks_medium_df = process_top_tracks_data(top_tracks_medium, sp, 'medium_term', timestamp_iso, user_id)
+        time.sleep(0.5)
+
+        print("  🏆 Fetching top tracks (long-term)...")
+        top_tracks_long = fetch_top_tracks(sp, time_range='long_term', limit=50)
+        tracks_long_df = process_top_tracks_data(top_tracks_long, sp, 'long_term', timestamp_iso, user_id)
+        time.sleep(0.5)
+
+        # ========================================
+        # Step 4: Top Artists - All Time Ranges (3 API calls)
+        # ========================================
+        print("  👥 Fetching top artists (short-term)...")
+        top_artists_short = fetch_top_artists(sp, time_range='short_term', limit=50)
+        artists_short_df = process_top_artists_data(top_artists_short, 'short_term', timestamp_iso, user_id)
+        time.sleep(0.5)
+
+        print("  👥 Fetching top artists (medium-term)...")
+        top_artists_medium = fetch_top_artists(sp, time_range='medium_term', limit=50)
+        artists_medium_df = process_top_artists_data(top_artists_medium, 'medium_term', timestamp_iso, user_id)
+        time.sleep(0.5)
+
+        print("  👥 Fetching top artists (long-term)...")
+        top_artists_long = fetch_top_artists(sp, time_range='long_term', limit=50)
+        artists_long_df = process_top_artists_data(top_artists_long, 'long_term', timestamp_iso, user_id)
+
+        # ========================================
+        # Step 5: Compute Derived Metrics
+        # ========================================
+        print("  📊 Computing metrics...")
+        metrics = compute_snapshot_metrics(
+            recent_df,
+            tracks_short_df, tracks_medium_df, tracks_long_df,
+            artists_short_df, artists_medium_df, artists_long_df
+        )
+
+        # ========================================
+        # Step 6: Save to R2 (current/ directory) - Used by ALL dashboards
+        # ========================================
+        print("  💾 Saving to current/ directory (for dashboards)...")
+        bucket_name = get_bucket_name()
+        if not bucket_name:
+            raise Exception("S3 bucket not configured")
+
+        # Save metadata
+        save_json_to_r2(bucket_name, f'users/{user_id}/current/metadata.json', metadata)
+
+        # Save all dataframes to current/
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/recent_tracks.parquet', recent_df)
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/top_tracks_short.parquet', tracks_short_df)
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/top_tracks_medium.parquet', tracks_medium_df)
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/top_tracks_long.parquet', tracks_long_df)
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/top_artists_short.parquet', artists_short_df)
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/top_artists_medium.parquet', artists_medium_df)
+        save_parquet_to_r2(bucket_name, f'users/{user_id}/current/top_artists_long.parquet', artists_long_df)
+        save_json_to_r2(bucket_name, f'users/{user_id}/current/computed_metrics.json', metrics)
+
+        # ========================================
+        # Step 7: Archive to snapshots/ (for Deep User page ONLY)
+        # ========================================
+        print("  📦 Archiving snapshot for historical analysis...")
+        snapshot_dir = f'users/{user_id}/snapshots/{timestamp}'
+
+        save_json_to_r2(bucket_name, f'{snapshot_dir}/metadata.json', metadata)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/recent_tracks.parquet', recent_df)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/top_tracks_short.parquet', tracks_short_df)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/top_tracks_medium.parquet', tracks_medium_df)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/top_tracks_long.parquet', tracks_long_df)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/top_artists_short.parquet', artists_short_df)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/top_artists_medium.parquet', artists_medium_df)
+        save_parquet_to_r2(bucket_name, f'{snapshot_dir}/top_artists_long.parquet', artists_long_df)
+        save_json_to_r2(bucket_name, f'{snapshot_dir}/computed_metrics.json', metrics)
+
+        elapsed = time.time() - start_time
+        print(f"  ✅ Sync complete in {elapsed:.1f} seconds")
+
+        return True, timestamp
+
+    except Exception as e:
+        print(f"  ❌ Sync failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, None
+
+
+def process_top_tracks_data(top_tracks, sp, time_range, timestamp_iso, user_id):
+    """Process top tracks API response into DataFrame"""
+    if not top_tracks:
+        return pd.DataFrame()
+
+    top_df = process_top_tracks(top_tracks, sp)
+    if top_df.empty:
+        return pd.DataFrame()
+
+    top_df['snapshot_timestamp'] = timestamp_iso
+    top_df['user_id'] = user_id
+    top_df['time_range'] = time_range
+
+    # Add derived columns
+    if 'release_date' in top_df.columns:
+        top_df['release_year'] = top_df['release_date'].str[:4].astype(int)
+
+    if 'duration_ms' in top_df.columns:
+        top_df['duration_seconds'] = top_df['duration_ms'] / 1000
+
+    return top_df
+
+
+def process_top_artists_data(top_artists, time_range, timestamp_iso, user_id):
+    """Process top artists API response into DataFrame"""
+    if not top_artists:
+        return pd.DataFrame()
+
+    artists_data = []
+    for idx, artist in enumerate(top_artists):
+        genre_list = artist.get('genres', [])
+        artists_data.append({
+            'rank': idx + 1,
+            'artist_id': artist.get('id'),
+            'artist_name': artist.get('name'),
+            'genres': ', '.join(genre_list),
+            'genre_list': genre_list,  # Keep as list for processing
+            'popularity': artist.get('popularity'),
+            'followers': artist.get('followers', {}).get('total'),
+            'time_range': time_range,
+            'snapshot_timestamp': timestamp_iso,
+            'user_id': user_id
+        })
+
+    return pd.DataFrame(artists_data)
+
+
+def compute_snapshot_metrics(recent_df, tracks_s, tracks_m, tracks_l, artists_s, artists_m, artists_l):
+    """
+    Compute derived metrics from snapshot data
+    Returns dict suitable for JSON serialization
+    """
+    # Combine all top tracks for overall stats
+    all_top_tracks = pd.concat([tracks_s, tracks_m, tracks_l]).drop_duplicates(subset=['track_id'])
+    all_top_artists = pd.concat([artists_s, artists_m, artists_l]).drop_duplicates(subset=['artist_id'])
+
+    # Get all genres from all time ranges
+    all_genres = []
+    for df in [artists_s, artists_m, artists_l]:
+        if 'genre_list' in df.columns:
+            for genres in df['genre_list']:
+                all_genres.extend(genres)
+    unique_genres = len(set(all_genres))
+
+    # Calculate taste consistency (overlap between short-term and long-term)
+    short_track_ids = set(tracks_s['track_id']) if not tracks_s.empty else set()
+    long_track_ids = set(tracks_l['track_id']) if not tracks_l.empty else set()
+    overlap = len(short_track_ids & long_track_ids)
+    overlap_pct = (overlap / 50 * 100) if len(short_track_ids) > 0 else 0
+
+    # Helper function to safely get column mean
+    def safe_mean(df, column, default=0):
+        """Safely calculate mean of a column, return default if column missing"""
+        if df.empty or column not in df.columns:
+            return default
+        return float(df[column].mean())
+
+    metrics = {
+        'snapshot_timestamp': recent_df['snapshot_timestamp'].iloc[0] if not recent_df.empty and 'snapshot_timestamp' in recent_df.columns else None,
+        'user_id': recent_df['user_id'].iloc[0] if not recent_df.empty and 'user_id' in recent_df.columns else None,
+
+        # Recent listening metrics
+        'recent_listening': {
+            'total_tracks': len(recent_df),
+            'unique_tracks': recent_df['track_id'].nunique() if not recent_df.empty else 0,
+            'unique_artists': recent_df['artist_name'].nunique() if not recent_df.empty else 0,
+            'avg_popularity': safe_mean(recent_df, 'popularity'),
+            'explicit_ratio': safe_mean(recent_df, 'explicit'),
+            'avg_duration_minutes': safe_mean(recent_df, 'duration_ms') / 1000 if 'duration_ms' in recent_df.columns else 0,
+            'avg_release_year': safe_mean(recent_df, 'release_year'),
+        },
+
+        # Top tracks metrics by time range
+        'top_tracks': {
+            'short_term_avg_popularity': safe_mean(tracks_s, 'popularity'),
+            'medium_term_avg_popularity': safe_mean(tracks_m, 'popularity'),
+            'long_term_avg_popularity': safe_mean(tracks_l, 'popularity'),
+            'short_explicit_ratio': safe_mean(tracks_s, 'explicit'),
+            'medium_explicit_ratio': safe_mean(tracks_m, 'explicit'),
+            'long_explicit_ratio': safe_mean(tracks_l, 'explicit'),
+        },
+
+        # Top artists metrics by time range
+        'top_artists': {
+            'short_term_avg_popularity': safe_mean(artists_s, 'popularity'),
+            'medium_term_avg_popularity': safe_mean(artists_m, 'popularity'),
+            'long_term_avg_popularity': safe_mean(artists_l, 'popularity'),
+            'short_term_avg_followers': safe_mean(artists_s, 'followers'),
+            'medium_term_avg_followers': safe_mean(artists_m, 'followers'),
+            'long_term_avg_followers': safe_mean(artists_l, 'followers'),
+        },
+
+        # Diversity metrics
+        'diversity': {
+            'artist_diversity': float(recent_df['artist_name'].nunique() / len(recent_df)) if not recent_df.empty and len(recent_df) > 0 else 0,
+            'mainstream_score': safe_mean(recent_df, 'popularity'),
+            'unique_genres': unique_genres,
+        },
+
+        # Taste consistency (short vs long term)
+        'taste_consistency': {
+            'short_vs_long_overlap': overlap,
+            'short_vs_long_overlap_pct': float(overlap_pct),
+            'consistency_type': 'Musical Consistency' if overlap_pct > 60 else 'Musical Explorer'
+        }
+    }
+
+    return metrics
+
+
+def save_parquet_to_r2(bucket_name, key, df):
+    """Save DataFrame to R2 as parquet"""
+    if df.empty:
+        print(f"  ⚠️ Skipping empty DataFrame: {key}")
+        return False
+
+    try:
+        # Use existing upload function
+        success = upload_dataframe_to_s3(df, bucket_name, key)
+        if success:
+            print(f"  ✓ Saved: {key}")
+        return success
+    except Exception as e:
+        print(f"  ✗ Failed to save {key}: {e}")
+        return False
+
+
+def save_json_to_r2(bucket_name, key, data):
+    """Save JSON data to R2"""
+    try:
+        s3_client = get_s3_client()
+        json_str = json.dumps(data, indent=2, default=str)
+
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=key,
+            Body=json_str.encode('utf-8'),
+            ContentType='application/json'
+        )
+        print(f"  ✓ Saved: {key}")
+        return True
+    except Exception as e:
+        print(f"  ✗ Failed to save {key}: {e}")
+        return False
+
+
+# ========================================
+# Legacy Functions (Keep for compatibility)
+# ========================================
+
 def collect_snapshot(sp, user_id):
     """
-    Collect a complete data snapshot for a user
+    Legacy function - redirects to new comprehensive snapshot
+    Kept for backwards compatibility
 
     Args:
         sp: Authenticated Spotipy client
@@ -44,202 +416,36 @@ def collect_snapshot(sp, user_id):
     Returns:
         dict: Dictionary containing all collected DataFrames and metadata
     """
-    snapshot_timestamp = datetime.now().isoformat()
+    success, timestamp = collect_comprehensive_snapshot(sp, user_id, force=True)
 
-    snapshot_data = {
-        'user_id': user_id,
-        'snapshot_timestamp': snapshot_timestamp,
-        'recent_tracks': None,
-        'top_tracks_short': None,
-        'top_tracks_medium': None,
-        'top_tracks_long': None,
-        'top_artists_short': None,
-        'top_artists_medium': None,
-        'top_artists_long': None,
-        'metrics': None
-    }
-
-    with st.spinner("📸 Collecting your listening snapshot..."):
-
-        # Recently played tracks (reduced to 20 for Development Mode quota)
-        try:
-            recent_items = fetch_recently_played(sp, limit=20)
-            if recent_items:
-                recent_df = process_recent_tracks(recent_items, sp)
-                if not recent_df.empty:
-                    recent_df['snapshot_timestamp'] = snapshot_timestamp
-                    recent_df['user_id'] = user_id
-                    snapshot_data['recent_tracks'] = recent_df
-            time.sleep(3.0)  # Rate limiting delay (increased for Development Mode to prevent 429 errors)
-        except Exception as e:
-            st.warning(f"Could not fetch recent tracks: {e}")
-
-        # Top tracks - all time ranges (reduced to 20 for Development Mode quota)
-        for time_range, label in [('short_term', 'short'), ('medium_term', 'medium'), ('long_term', 'long')]:
-            try:
-                top_tracks = fetch_top_tracks(sp, time_range=time_range, limit=20)
-                if top_tracks:
-                    top_df = process_top_tracks(top_tracks, sp)
-                    if not top_df.empty:
-                        top_df['snapshot_timestamp'] = snapshot_timestamp
-                        top_df['user_id'] = user_id
-                        top_df['time_range'] = time_range
-                        snapshot_data[f'top_tracks_{label}'] = top_df
-                time.sleep(4.0)  # Rate limiting delay (increased for Development Mode to prevent 429 errors)
-            except Exception as e:
-                st.warning(f"Could not fetch top tracks ({label}): {e}")
-
-        # Top artists - all time ranges (reduced to 20 for Development Mode quota)
-        for time_range, label in [('short_term', 'short'), ('medium_term', 'medium'), ('long_term', 'long')]:
-            try:
-                top_artists = fetch_top_artists(sp, time_range=time_range, limit=20)
-                if top_artists:
-                    artists_data = []
-                    for idx, artist in enumerate(top_artists):
-                        artists_data.append({
-                            'artist_id': artist.get('id'),
-                            'artist_name': artist.get('name'),
-                            'genres': ', '.join(artist.get('genres', [])),
-                            'popularity': artist.get('popularity'),
-                            'followers': artist.get('followers', {}).get('total'),
-                            'rank': idx + 1,
-                            'time_range': time_range,
-                            'snapshot_timestamp': snapshot_timestamp,
-                            'user_id': user_id
-                        })
-
-                    if artists_data:
-                        snapshot_data[f'top_artists_{label}'] = pd.DataFrame(artists_data)
-                    time.sleep(3.0)  # Rate limiting delay (increased for Development Mode to prevent 429 errors)
-            except Exception as e:
-                st.warning(f"Could not fetch top artists ({label}): {e}")
-
-        # Calculate aggregated metrics
-        try:
-            snapshot_data['metrics'] = calculate_snapshot_metrics(snapshot_data)
-        except Exception as e:
-            st.warning(f"Could not compute metrics: {e}")
-
-    return snapshot_data
-
-
-def calculate_snapshot_metrics(snapshot_data):
-    """
-    Calculate aggregated metrics from snapshot data
-
-    Args:
-        snapshot_data: Dictionary containing collected DataFrames
-
-    Returns:
-        pd.DataFrame: Single-row DataFrame with computed metrics
-    """
-    metrics = {
-        'snapshot_timestamp': snapshot_data['snapshot_timestamp'],
-        'user_id': snapshot_data['user_id']
-    }
-
-    # Recent tracks metrics
-    recent_df = snapshot_data.get('recent_tracks')
-    if recent_df is not None and not recent_df.empty:
-        metrics['recent_unique_artists'] = recent_df['artist_name'].nunique()
-        metrics['recent_unique_tracks'] = recent_df['track_name'].nunique()
-        metrics['recent_artist_diversity'] = calculate_diversity_score(recent_df, 'artist_name')
-
-        # Audio feature averages
-        audio_features = ['danceability', 'energy', 'valence', 'acousticness',
-                         'instrumentalness', 'speechiness', 'liveness', 'tempo', 'loudness']
-        for feature in audio_features:
-            if feature in recent_df.columns:
-                metrics[f'recent_avg_{feature}'] = recent_df[feature].mean()
-
-        # Composite feature averages
-        if 'mood_score' in recent_df.columns:
-            metrics['recent_avg_mood'] = recent_df['mood_score'].mean()
-        if 'grooviness' in recent_df.columns:
-            metrics['recent_avg_grooviness'] = recent_df['grooviness'].mean()
-
-        # Context distribution
-        if 'context' in recent_df.columns:
-            context_dist = recent_df['context'].value_counts(normalize=True)
-            for context, pct in context_dist.items():
-                metrics[f'recent_pct_{context}'] = pct
-
-    # Top tracks metrics (short term)
-    top_short = snapshot_data.get('top_tracks_short')
-    if top_short is not None and not top_short.empty:
-        metrics['top_short_avg_popularity'] = top_short['popularity'].mean()
-        metrics['top_short_unique_artists'] = top_short['artist_name'].nunique()
-
-        if 'energy' in top_short.columns:
-            metrics['top_short_avg_energy'] = top_short['energy'].mean()
-        if 'valence' in top_short.columns:
-            metrics['top_short_avg_valence'] = top_short['valence'].mean()
-
-    # Top artists metrics (short term)
-    top_artists_short = snapshot_data.get('top_artists_short')
-    if top_artists_short is not None and not top_artists_short.empty:
-        metrics['top_short_unique_genres'] = len([g for genres in top_artists_short['genres']
-                                                   for g in genres.split(', ') if g])
-        metrics['top_short_avg_artist_popularity'] = top_artists_short['popularity'].mean()
-
-    return pd.DataFrame([metrics])
-
-
-def save_snapshot_to_s3(snapshot_data):
-    """
-    Save collected snapshot data to S3
-
-    Args:
-        snapshot_data: Dictionary containing collected DataFrames
-
-    Returns:
-        bool: True if all uploads successful
-    """
-    bucket_name = get_bucket_name()
-    if not bucket_name:
-        st.error("S3 bucket not configured")
-        return False
-
-    user_id = snapshot_data['user_id']
-    timestamp = snapshot_data['snapshot_timestamp'].replace(':', '-').replace('.', '-')
-
-    success_count = 0
-    total_uploads = 0
-
-    with st.spinner("☁️ Uploading to R2 storage..."):
-
-        # Upload each DataFrame
-        data_types = [
-            ('recent_tracks', 'recent_tracks'),
-            ('top_tracks_short', 'top_tracks_short'),
-            ('top_tracks_medium', 'top_tracks_medium'),
-            ('top_tracks_long', 'top_tracks_long'),
-            ('top_artists_short', 'top_artists_short'),
-            ('top_artists_medium', 'top_artists_medium'),
-            ('top_artists_long', 'top_artists_long'),
-            ('metrics', 'metrics')
-        ]
-
-        for data_key, filename_prefix in data_types:
-            df = snapshot_data.get(data_key)
-            if df is not None and not df.empty:
-                s3_key = f"users/{user_id}/snapshots/{timestamp}_{filename_prefix}.parquet"
-                total_uploads += 1
-
-                if upload_dataframe_to_s3(df, bucket_name, s3_key):
-                    success_count += 1
-                    # Reduced verbosity - only show count
-                time.sleep(0.2)  # Small delay between uploads
-
-    if success_count == total_uploads and total_uploads > 0:
-        st.success(f"✓ Snapshot saved to R2 ({success_count} files)")
-        return True
-    elif success_count > 0:
-        st.warning(f"⚠️ Partially saved: {success_count}/{total_uploads} files")
-        return False
+    if success:
+        # Return data in old format for compatibility
+        bucket_name = get_bucket_name()
+        snapshot_data = {
+            'user_id': user_id,
+            'snapshot_timestamp': timestamp,
+            'recent_tracks': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/recent_tracks.parquet'),
+            'top_tracks_short': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/top_tracks_short.parquet'),
+            'top_tracks_medium': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/top_tracks_medium.parquet'),
+            'top_tracks_long': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/top_tracks_long.parquet'),
+            'top_artists_short': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/top_artists_short.parquet'),
+            'top_artists_medium': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/top_artists_medium.parquet'),
+            'top_artists_long': load_dataframe_from_r2(bucket_name, f'users/{user_id}/current/top_artists_long.parquet'),
+            'metrics': None
+        }
+        return snapshot_data
     else:
-        st.error("❌ Failed to save snapshot")
-        return False
+        return None
+
+
+def load_dataframe_from_r2(bucket_name, key):
+    """Load DataFrame from R2"""
+    try:
+        s3_client = get_s3_client()
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+        return pd.read_parquet(response['Body'])
+    except:
+        return None
 
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
@@ -254,199 +460,26 @@ def get_user_snapshot_count(_sp, user_id):
     Returns:
         int: Number of snapshots
     """
-    from app.func.s3_storage import list_user_snapshots
-
-    bucket_name = get_bucket_name()
-    if not bucket_name:
-        return 0
-
-    snapshots = list_user_snapshots(bucket_name, user_id)
-
-    # Count unique timestamps
-    unique_timestamps = set()
-    for key in snapshots:
-        # Extract timestamp from key
-        parts = key.split('/')
-        if len(parts) >= 4:
-            filename = parts[3]
-            timestamp = filename.split('_')[0]
-            unique_timestamps.add(timestamp)
-
-    return len(unique_timestamps)
-
-
-def collect_and_save_snapshot(sp, user_id):
-    """
-    Collect and save a complete snapshot (convenience wrapper)
-
-    Args:
-        sp: Authenticated Spotipy client
-        user_id: Spotify user ID
-
-    Returns:
-        bool: True if collection and save successful
-    """
     try:
-        snapshot_data = collect_snapshot(sp, user_id)
+        bucket_name = get_bucket_name()
+        if not bucket_name:
+            return 0
 
-        if snapshot_data:
-            success = save_snapshot_to_s3(snapshot_data)
-            return success
+        s3_client = get_s3_client()
+
+        # List objects in snapshots/ directory
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=f'users/{user_id}/snapshots/',
+            Delimiter='/'
+        )
+
+        # Count unique snapshot directories
+        if 'CommonPrefixes' in response:
+            return len(response['CommonPrefixes'])
         else:
-            st.error("Failed to collect snapshot data")
-            return False
+            return 0
+
     except Exception as e:
-        st.error(f"Error during snapshot collection: {str(e)}")
-        return False
-
-
-def collect_snapshot_with_progress(sp):
-    """
-    Collect a complete data snapshot with progress updates
-    Generator function that yields progress information
-
-    Args:
-        sp: Authenticated Spotipy client
-
-    Yields:
-        dict: Progress information with 'percentage' and 'stage' keys
-    """
-    # Get user profile
-    profile = fetch_user_profile(sp)
-    if not profile:
-        raise Exception("Failed to fetch user profile")
-
-    user_id = profile.get('id')
-    snapshot_timestamp = datetime.now().isoformat()
-
-    snapshot_data = {
-        'user_id': user_id,
-        'snapshot_timestamp': snapshot_timestamp,
-        'recent_tracks': None,
-        'top_tracks_short': None,
-        'top_tracks_medium': None,
-        'top_tracks_long': None,
-        'top_artists_short': None,
-        'top_artists_medium': None,
-        'top_artists_long': None,
-        'metrics': None
-    }
-
-    # Initial delay to prevent immediate rate limiting
-    time.sleep(1.0)
-
-    # Stage 1: Fetch recent tracks (0-20%)
-    yield {'percentage': 0, 'stage': 'Fetching recent tracks...'}
-    try:
-        recent_items = fetch_recently_played(sp, limit=20)
-        if recent_items:
-            recent_df = process_recent_tracks(recent_items, sp)
-            if not recent_df.empty:
-                recent_df['snapshot_timestamp'] = snapshot_timestamp
-                recent_df['user_id'] = user_id
-                snapshot_data['recent_tracks'] = recent_df
-        time.sleep(3.0)  # Rate limiting delay (increased for Development Mode)
-    except Exception as e:
-        raise Exception(f"Failed to fetch recent tracks: {e}")
-
-    yield {'percentage': 20, 'stage': 'Recent tracks collected'}
-
-    # Stage 2: Fetch top tracks (20-45%)
-    time_ranges = [('short_term', 'short'), ('medium_term', 'medium'), ('long_term', 'long')]
-    for idx, (time_range, label) in enumerate(time_ranges):
-        progress = 20 + (idx + 1) * 8  # Spread across 20-45%
-        yield {'percentage': progress, 'stage': f'Loading top tracks ({label} term)...'}
-
-        try:
-            top_tracks = fetch_top_tracks(sp, time_range=time_range, limit=20)
-            if top_tracks:
-                top_df = process_top_tracks(top_tracks, sp)
-                if not top_df.empty:
-                    top_df['snapshot_timestamp'] = snapshot_timestamp
-                    top_df['user_id'] = user_id
-                    top_df['time_range'] = time_range
-                    snapshot_data[f'top_tracks_{label}'] = top_df
-            time.sleep(4.0)  # Rate limiting delay (increased for Development Mode to prevent 429 errors)
-        except Exception as e:
-            raise Exception(f"Failed to fetch top tracks ({label}): {e}")
-
-    yield {'percentage': 45, 'stage': 'Top tracks collected'}
-
-    # Stage 3: Fetch top artists (45-70%)
-    for idx, (time_range, label) in enumerate(time_ranges):
-        progress = 45 + (idx + 1) * 8  # Spread across 45-70%
-        yield {'percentage': progress, 'stage': f'Analyzing top artists ({label} term)...'}
-
-        try:
-            top_artists = fetch_top_artists(sp, time_range=time_range, limit=20)
-            if top_artists:
-                artists_data = []
-                for artist_idx, artist in enumerate(top_artists):
-                    artists_data.append({
-                        'artist_id': artist.get('id'),
-                        'artist_name': artist.get('name'),
-                        'genres': ', '.join(artist.get('genres', [])),
-                        'popularity': artist.get('popularity'),
-                        'followers': artist.get('followers', {}).get('total'),
-                        'rank': artist_idx + 1,
-                        'time_range': time_range,
-                        'snapshot_timestamp': snapshot_timestamp,
-                        'user_id': user_id
-                    })
-
-                if artists_data:
-                    snapshot_data[f'top_artists_{label}'] = pd.DataFrame(artists_data)
-            time.sleep(3.0)  # Rate limiting delay (increased for Development Mode to prevent 429 errors)
-        except Exception as e:
-            raise Exception(f"Failed to fetch top artists ({label}): {e}")
-
-    yield {'percentage': 70, 'stage': 'Top artists collected'}
-
-    # Stage 4: Computing metrics (70-85%)
-    yield {'percentage': 72, 'stage': 'Computing metrics and insights...'}
-    try:
-        snapshot_data['metrics'] = calculate_snapshot_metrics(snapshot_data)
-    except Exception as e:
-        raise Exception(f"Failed to compute metrics: {e}")
-
-    yield {'percentage': 85, 'stage': 'Metrics computed'}
-
-    # Stage 5: Saving to storage (85-100%)
-    yield {'percentage': 87, 'stage': 'Saving to cloud storage...'}
-
-    bucket_name = get_bucket_name()
-    if not bucket_name:
-        raise Exception("S3 bucket not configured")
-
-    timestamp = snapshot_timestamp.replace(':', '-').replace('.', '-')
-    success_count = 0
-    total_uploads = 0
-
-    data_types = [
-        ('recent_tracks', 'recent_tracks'),
-        ('top_tracks_short', 'top_tracks_short'),
-        ('top_tracks_medium', 'top_tracks_medium'),
-        ('top_tracks_long', 'top_tracks_long'),
-        ('top_artists_short', 'top_artists_short'),
-        ('top_artists_medium', 'top_artists_medium'),
-        ('top_artists_long', 'top_artists_long'),
-        ('metrics', 'metrics')
-    ]
-
-    for idx, (data_key, filename_prefix) in enumerate(data_types):
-        progress = 87 + ((idx + 1) * 1.6)  # 87-100%
-        yield {'percentage': int(progress), 'stage': f'Uploading {filename_prefix}...'}
-
-        df = snapshot_data.get(data_key)
-        if df is not None and not df.empty:
-            s3_key = f"users/{user_id}/snapshots/{timestamp}_{filename_prefix}.parquet"
-            total_uploads += 1
-
-            if upload_dataframe_to_s3(df, bucket_name, s3_key):
-                success_count += 1
-            time.sleep(0.2)
-
-    if success_count != total_uploads or total_uploads == 0:
-        raise Exception(f"Upload failed: {success_count}/{total_uploads} files uploaded")
-
-    yield {'percentage': 100, 'stage': 'Sync complete!'}
+        print(f"Error counting snapshots: {e}")
+        return 0

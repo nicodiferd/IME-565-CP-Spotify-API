@@ -58,10 +58,21 @@ from .s3_storage import *
 
 # Data collection
 from .data_collection import (
-    collect_snapshot,
-    save_snapshot_to_s3,
-    collect_and_save_snapshot,
+    collect_comprehensive_snapshot,
+    should_refresh_data,
+    collect_snapshot,  # Legacy function for backwards compatibility
     get_user_snapshot_count
+)
+
+# Dashboard helpers
+from .dashboard_helpers import (
+    load_current_snapshot,
+    handle_missing_data,
+    display_sync_status,
+    get_recent_tracks,
+    get_top_tracks,
+    get_top_artists,
+    get_metrics
 )
 
 
@@ -100,8 +111,16 @@ __all__ = [
     'apply_page_config',
     'get_custom_css',
     # Data collection
-    'collect_snapshot',
-    'save_snapshot_to_s3',
-    'collect_and_save_snapshot',
+    'collect_comprehensive_snapshot',
+    'should_refresh_data',
+    'collect_snapshot',  # Legacy
     'get_user_snapshot_count',
+    # Dashboard helpers
+    'load_current_snapshot',
+    'handle_missing_data',
+    'display_sync_status',
+    'get_recent_tracks',
+    'get_top_tracks',
+    'get_top_artists',
+    'get_metrics',
 ]
