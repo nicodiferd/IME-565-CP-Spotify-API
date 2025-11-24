@@ -61,17 +61,36 @@ def process_recent_tracks(recent_items, sp=None):
     # Convert timestamps
     df['played_at'] = pd.to_datetime(df['played_at'])
     df['duration_min'] = df['duration_ms'] / 60000
-    df['hour'] = df['played_at'].dt.hour
-    df['day_of_week'] = df['played_at'].dt.day_name()
-    df['date'] = df['played_at'].dt.date
-    df['is_weekend'] = df['played_at'].dt.dayofweek >= 5
+
+    # Extract comprehensive temporal features for analytics
+    df['hour'] = df['played_at'].dt.hour  # 0-23
+    df['day_of_week'] = df['played_at'].dt.day_name()  # Monday-Sunday
+    df['day_of_month'] = df['played_at'].dt.day  # 1-31
+    df['week_of_year'] = df['played_at'].dt.isocalendar().week  # 1-52
+    df['month'] = df['played_at'].dt.month  # 1-12
+    df['month_name'] = df['played_at'].dt.month_name()  # January-December
+    df['quarter'] = df['played_at'].dt.quarter  # 1-4
+    df['year'] = df['played_at'].dt.year  # YYYY
+    df['day_of_year'] = df['played_at'].dt.dayofyear  # 1-365/366
+    df['date'] = df['played_at'].dt.date  # Date only (YYYY-MM-DD)
+    df['is_weekend'] = df['played_at'].dt.dayofweek >= 5  # Boolean
+
+    # Add season classification
+    def get_season(month):
+        if month in [12, 1, 2]:
+            return 'Winter'
+        elif month in [3, 4, 5]:
+            return 'Spring'
+        elif month in [6, 7, 8]:
+            return 'Summer'
+        else:  # 9, 10, 11
+            return 'Fall'
+
+    df['season'] = df['month'].apply(get_season)
 
     # Add derived fields
     if 'release_date' in df.columns:
         df['release_year'] = df['release_date'].str[:4].fillna('0').astype(int)
-
-    # Add hour_of_day for temporal analysis
-    df['hour_of_day'] = df['hour']
 
     # NOTE: Audio features endpoint returns HTTP 403 (not available for this app)
     # We use Kaggle dataset lookup instead - see dashboard_helpers.py for enrichment

@@ -6,6 +6,7 @@ All Plotly chart generation functions with Spotify-themed styling
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+from . import datetime_utils
 
 
 # ============================================================================
@@ -209,7 +210,11 @@ def plot_recent_timeline(df):
         color=color_col,
         hover_data=['artist_name', 'album_name', 'duration_min'],
         title='Recent Listening Timeline',
-        labels={'played_at': 'Time', 'track_name': 'Track', color_col: color_col.replace('_', ' ').title()},
+        labels={
+            'played_at': datetime_utils.get_axis_label('played_at'),
+            'track_name': 'Track',
+            color_col: color_col.replace('_', ' ').title()
+        },
         height=600
     )
 

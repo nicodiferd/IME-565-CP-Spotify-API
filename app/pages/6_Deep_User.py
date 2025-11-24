@@ -206,7 +206,7 @@ with tab1:
             st.warning("No artist data available yet")
         else:
             # Convert snapshot_timestamp to datetime
-            top_artists['timestamp'] = pd.to_datetime(top_artists['snapshot_timestamp'])
+            top_artists['timestamp'] = pd.to_datetime(top_artists['snapshot_timestamp'], format='ISO8601')
             top_artists = top_artists.sort_values('timestamp')
 
             # Filter by time range
@@ -316,7 +316,7 @@ with tab2:
             st.warning("No listening data available yet")
         else:
             # Convert timestamps
-            recent_tracks['timestamp'] = pd.to_datetime(recent_tracks['snapshot_timestamp'])
+            recent_tracks['timestamp'] = pd.to_datetime(recent_tracks['snapshot_timestamp'], format='ISO8601')
             recent_tracks['date'] = recent_tracks['timestamp'].dt.date
             recent_tracks['hour'] = recent_tracks['timestamp'].dt.hour
             recent_tracks['day_of_week'] = recent_tracks['timestamp'].dt.day_name()
@@ -385,7 +385,7 @@ with tab3:
             st.warning("No metrics data available yet")
         else:
             # Convert timestamp
-            metrics['timestamp'] = pd.to_datetime(metrics['snapshot_timestamp'])
+            metrics['timestamp'] = pd.to_datetime(metrics['snapshot_timestamp'], format='ISO8601')
             metrics = metrics.sort_values('timestamp')
 
             # Artist diversity over time
