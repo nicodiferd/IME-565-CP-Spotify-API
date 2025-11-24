@@ -65,3 +65,7 @@ htmlcov/
 
 # Logs
 *.log
+
+notebooks/.cache_notebook
+notebooks/*.csv
+notebooks/*.json    

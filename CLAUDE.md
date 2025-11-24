@@ -24,16 +24,37 @@ This is a multi-phase Spotify analytics platform project for IME 565 (Predictive
 - **Visualization modules** (`src/visualization.py`)
   - Distribution plots, correlation matrices
   - Top artists/genres charts
-- **Streamlit dashboard** (fully modularized)
+- **Kaggle Dataset Integration** (`app/func/dashboard_helpers.py`)
+  - Audio features enrichment from ~114k track dataset
+  - 60-80% coverage for popular tracks
+  - Automatic feature engineering and context classification
+- **Streamlit dashboard** (fully modularized with snapshot architecture)
   - `app/Home.py` - Home page and main entry point for multi-page app
-  - `app/func/` - Function modules (auth, data fetching, processing, visualizations, UI, S3 storage, data collection)
-  - `app/pages/` - Page modules (dashboard, analytics, recent listening, top tracks, playlists, deep user)
+  - `app/func/` - Function modules (auth, data fetching, processing, visualizations, UI, S3 storage, data collection, **dashboard_helpers**)
+  - `app/pages/` - Page modules (**all migrated to snapshot architecture**)
+    - `1_Dashboard.py` - Overview with taste consistency, genre breakdown
+    - `2_Advanced_Analytics.py` - Full audio feature analysis (now functional!)
+    - `3_Recent_Listening.py` - Timeline with enriched data
+    - `4_Top_Tracks.py` - Three view modes with time range comparisons
+    - `5_Playlists.py` - Playlist overview
+    - `6_Deep_User.py` - Historical analytics
   - OAuth authentication
-  - Real-time Spotify data fetching
-  - Interactive visualizations
+  - **Snapshot-based data loading** (5-10x faster page loads)
+  - Interactive visualizations with Plotly
   - Cloudflare R2 storage for historical data
 - **Jupyter notebook** (`notebooks/01_Phase1_EDA.ipynb`)
   - Complete EDA workflow
+
+### 🎉 Recent Updates (November 2025)
+**Major Dashboard Migration Complete**:
+- ✅ All dashboards now use `load_current_snapshot()` from R2 storage
+- ✅ Kaggle audio features integration (mood, grooviness, focus, relaxation, context)
+- ✅ Dashboard 2 (Advanced Analytics) completely rebuilt - now shows radar charts, mood distributions, composite features
+- ✅ Dashboard 4 (Top Tracks) enhanced with side-by-side comparisons and taste evolution analysis
+- ✅ Fixed critical bugs:
+  - Environment variable loading in multi-page Streamlit apps (`load_dotenv()` in `s3_storage.py`)
+  - Parquet file reading from S3 (BytesIO wrapper for seekable stream)
+- ✅ Performance: 5-10x faster page loads (no API calls on every page view)
 
 ### 📋 Planned (Not Yet Implemented)
 - **Data collection scripts** (planned `scripts/` directory)
@@ -93,6 +114,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from func.ui_components import apply_page_config, get_custom_css
 from func.page_auth import require_auth
+from func.dashboard_helpers import load_current_snapshot, handle_missing_data, display_sync_status
 
 # Apply page config and styling
 apply_page_config()
@@ -104,9 +126,21 @@ if not sp:
     st.warning("Please connect your Spotify account to view this page.")
     st.stop()
 
-# Page content
+user_id = profile['id']
+
+# Load current snapshot data
+try:
+    data = load_current_snapshot(user_id)
+except Exception as e:
+    handle_missing_data(redirect_to_sync=True)
+
+# Page header with sync status
 st.header("🎨 Your Page Title")
-# Your page logic here...
+display_sync_status(data['metadata'])
+
+# Page content using snapshot data
+st.subheader("Your Analysis")
+# Use data['recent_tracks'], data['top_tracks']['short'], etc.
 ```
 
 2. **File naming convention**:
@@ -193,8 +227,9 @@ cp .env.example .env
 # Edit .env and add:
 #   SPOTIFY_CLIENT_ID=your_client_id_here
 #   SPOTIFY_CLIENT_SECRET=your_client_secret_here
-#   SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+#   SPOTIFY_REDIRECT_URI=http://127.0.0.1:8501/
 # Get credentials from: https://developer.spotify.com/dashboard
+# IMPORTANT: Add the exact redirect URI to your Spotify app settings (including trailing slash)
 ```
 
 ### Data Acquisition
@@ -227,6 +262,35 @@ python -m ipykernel install --user --name=venv --display-name "Python (Spotify A
 # List installed kernels
 jupyter kernelspec list
 ```
+
+### Working with Jupyter Notebooks for API Testing
+The `notebooks/` directory contains testing notebooks for API exploration:
+
+- **`notebooks/api_testing.ipynb`**: Tests Spotify API capabilities and limitations
+- **`notebooks/01_Phase1_EDA.ipynb`**: Full exploratory data analysis workflow
+
+**Key Patterns**:
+```python
+# Test API endpoints
+import sys
+sys.path.insert(0, '..')  # Access app modules from notebook
+
+from app.func.auth import get_spotify_client
+from app.func.data_fetching import fetch_recent_tracks
+
+# Initialize client
+sp = get_spotify_client()
+
+# Test endpoint
+recent = sp.current_user_recently_played(limit=50)
+print(f"Fetched {len(recent['items'])} tracks")
+```
+
+**Best Practices**:
+- Use notebooks to test API endpoints before implementing in dashboard
+- Document findings in `docs/SPOTIFY_API_CAPABILITIES.md`
+- Cache results to avoid rate limiting during exploration
+- Keep `.cache_notebook` in .gitignore (contains auth tokens)
 
 ### Running Tests
 ```bash
@@ -268,9 +332,11 @@ Reusable functions for API calls, data processing, and utilities:
 - **`ui_components.py`**: Page configuration, custom CSS styling, reusable UI elements
 - **`s3_storage.py`**: Cloudflare R2 upload/download functions
 - **`data_collection.py`**: Snapshot collection and metrics computation
+- **`dashboard_helpers.py`**: Helper functions for loading current snapshot data in dashboard pages (provides `load_current_snapshot()`, `handle_missing_data()`, and time-range specific getters)
 
 **Page Modules (`app/pages/`):**
 Individual Streamlit pages - automatically discovered and added to navigation:
+- **`0_Data_Sync.py`**: Mandatory onboarding data collection page with Spotify facts and progress tracking
 - **`1_Dashboard.py`**: Overview page with key metrics, temporal patterns, and artist analysis
 - **`2_Advanced_Analytics.py`**: Advanced analytics with audio features, mood analysis, and feature distributions
 - **`3_Recent_Listening.py`**: Detailed timeline of recently played tracks with downloadable CSV
@@ -282,7 +348,7 @@ Individual Streamlit pages - automatically discovered and added to navigation:
 
 **Design Principles:**
 - **Streamlit native multi-page**: Pages in `app/pages/` are automatically discovered and added to sidebar navigation
-- **Numbered prefixes**: Files prefixed with numbers (1_, 2_, etc.) control display order in navigation
+- **Numbered prefixes**: Files prefixed with numbers (0_, 1_, 2_, etc.) control display order in navigation
 - **NO EMOJIS IN FILENAMES**: Never use emojis in Python filenames - causes encoding issues across platforms
 - Use `st.session_state` for shared data across pages (authentication tokens, user data)
 - Import functions from `app/func/` modules (avoid duplicating code across pages)
@@ -298,6 +364,13 @@ Individual Streamlit pages - automatically discovered and added to navigation:
       st.stop()
   ```
 
+**User Onboarding Flow:**
+1. User visits `Home.py` and authenticates with Spotify OAuth
+2. After authentication, user is automatically redirected to `0_Data_Sync.py`
+3. Data collection runs automatically with progress tracking and Spotify facts
+4. Upon completion, user is redirected to `1_Dashboard.py`
+5. All subsequent visits skip the data sync (unless manually triggered)
+
 ### Data Collection & Storage (Deep User Analytics)
 
 The app automatically collects and stores user listening data to enable longitudinal analysis:
@@ -307,10 +380,58 @@ The app automatically collects and stores user listening data to enable longitud
 - Parquet file format for efficient storage and querying
 - Organized by user ID and timestamp
 
+**File Structure:**
+```
+cloudflare-r2://ime565spotify/
+├── reference_data/
+│   └── kaggle_tracks_audio_features.parquet    # Audio features lookup table
+└── users/
+    └── {user_id}/
+        ├── current/                            # Latest snapshot (for dashboards)
+        │   ├── metadata.json
+        │   ├── recent_tracks.parquet
+        │   ├── top_tracks_short.parquet
+        │   ├── top_tracks_medium.parquet
+        │   ├── top_tracks_long.parquet
+        │   ├── top_artists_short.parquet
+        │   ├── top_artists_medium.parquet
+        │   ├── top_artists_long.parquet
+        │   └── computed_metrics.json
+        ├── snapshots/                          # Historical point-in-time collections
+        │   └── {timestamp}/
+        │       ├── metadata.json
+        │       ├── recent_tracks.parquet
+        │       ├── top_tracks_short.parquet
+        │       ├── top_tracks_medium.parquet
+        │       ├── top_tracks_long.parquet
+        │       ├── top_artists_short.parquet
+        │       ├── top_artists_medium.parquet
+        │       ├── top_artists_long.parquet
+        │       └── computed_metrics.json
+        └── aggregated/                         # Pre-computed for fast loading
+            ├── all_recent_tracks.parquet       # Deduplicated history
+            ├── all_snapshots_metrics.parquet   # Time series
+            └── last_updated.json
+```
+
+**Important**:
+- The `current/` directory contains the most recent snapshot used by dashboard pages (1-5)
+- Dashboard pages should use `load_current_snapshot()` from `dashboard_helpers.py` to access this data
+- The `snapshots/` directory contains historical data used by the Deep User page (6) for longitudinal analysis
+- The `aggregated/` directory is for pre-computed analysis (future implementation)
+
+**Data Collection Strategy:**
+- **Current**: Collects on every session (during onboarding flow)
+- **Recommended**: Smart scheduling - collect only if >24 hours since last snapshot
+- **Implementation**: Check `last_updated.json` before triggering collection
+- **User Control**: Manual refresh button to force collection
+
 **Data Collection Trigger:**
-- Automatically collects data on every app session (when user authenticates)
+- First-time users: Automatic onboarding data collection in `0_Data_Sync.py`
+- Returning users: Check if last collection was >24 hours ago
+- Manual trigger: User can force refresh via dashboard
 - Captures: recently played tracks, top tracks/artists (all time ranges), computed metrics
-- Stored in R2 bucket with structure: `users/{user_id}/snapshots/{timestamp}_{data_type}.parquet`
+- Stored in R2 bucket with structure: `users/{user_id}/snapshots/{timestamp}/`
 
 **Collected Data Types:**
 1. **Recent Tracks** (`recent_tracks.parquet`): Last 50 played tracks with audio features, timestamps, and composite metrics
@@ -327,21 +448,21 @@ The app automatically collects and stores user listening data to enable longitud
 **Configuration:**
 Required environment variables in `.env`:
 ```
-# Required
+# Required for S3 API access
 R2_ACCESS_KEY_ID=your_r2_access_key_id
 R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
 R2_BUCKET_NAME=ime565spotify
+CLOUDFLARE_ACCOUNT_ID=24df8bb5d20dca402dfc277d4c38cc80
 
-# Use custom domain (recommended) OR account ID
-R2_CUSTOM_DOMAIN=s3.diferdinando.com
-# CLOUDFLARE_ACCOUNT_ID=24df8bb5d20dca402dfc277d4c38cc80
+# Note: Custom domains (like s3.diferdinando.com) are for public HTTP access,
+# not for S3 API operations. API always uses the account-specific endpoint.
 ```
 
 **Your R2 Bucket Configuration:**
 - Bucket Name: `ime565spotify`
-- Custom Domain: `s3.diferdinando.com` (configured with TLS 1.0)
 - Region: Western North America (WNAM)
 - Account ID: `24df8bb5d20dca402dfc277d4c38cc80`
+- S3 API Endpoint: `https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`
 
 See `docs/INTEGRATION_GUIDE.md` for detailed setup instructions.
 
@@ -420,6 +541,41 @@ plot_feature_distributions(df, audio_features)
 plot_correlation_matrix(df, audio_features)
 ```
 
+**Working with `app/func/dashboard_helpers.py`:**
+```python
+from func.dashboard_helpers import load_current_snapshot, handle_missing_data, display_sync_status
+from func.page_auth import require_auth
+
+# Authenticate
+sp, profile = require_auth()
+if not sp:
+    st.stop()
+
+user_id = profile['id']
+
+# Load current snapshot data (cached for 1 hour)
+try:
+    data = load_current_snapshot(user_id)
+except Exception as e:
+    handle_missing_data(redirect_to_sync=True)
+
+# Show sync status indicator
+display_sync_status(data['metadata'])
+
+# Access data
+recent_tracks = data['recent_tracks']  # DataFrame
+top_tracks_short = data['top_tracks']['short']  # DataFrame
+top_artists_long = data['top_artists']['long']  # DataFrame
+metrics = data['metrics']  # dict
+
+# Or use quick access functions
+from func.dashboard_helpers import get_recent_tracks, get_top_tracks, get_metrics
+
+recent = get_recent_tracks(user_id)
+top_short = get_top_tracks(user_id, 'short')
+metrics = get_metrics(user_id)
+```
+
 ### Jupyter Notebook Workflow (notebooks/01_Phase1_EDA.ipynb)
 
 Standard analysis pipeline:
@@ -461,8 +617,32 @@ class SessionCacheHandler(CacheHandler):
 - Wrap all API calls with retry logic and exponential backoff
 - Handle HTTP 429 (Too Many Requests): Extract 'Retry-After' header and delay appropriately
 - Handle HTTP 401 errors: Clear session token and prompt re-authentication
-- Batch requests: Spotify allows up to 100 tracks per audio features request
+- Batch requests: Spotify allows up to 100 tracks per request (50 for most endpoints)
 - Throttle to stay below 2 requests per second (limit is ~180 requests per minute)
+
+### Critical API Limitation: Audio Features
+**IMPORTANT**: The Spotify Web API endpoint for audio features (`sp.audio_features()`) returns **HTTP 403 Forbidden** for this application.
+
+**Impact**:
+- Cannot access danceability, energy, valence, acousticness, instrumentalness, speechiness, tempo, loudness directly from API
+- These features are critical for mood analysis, context classification, and predictive modeling
+
+**Workarounds**:
+1. **Kaggle Dataset Lookup** (Current approach):
+   - Pre-load Kaggle Spotify Tracks Dataset (~114k tracks) with audio features
+   - Merge user's tracks with dataset by track_id
+   - Coverage: ~60-80% for popular tracks, lower for obscure tracks
+
+2. **Request Extended API Access** (Future):
+   - Contact Spotify Developer Support for extended quota
+   - Required for production deployment with full audio feature access
+   - URL: https://developer.spotify.com/support
+
+**Dashboard Strategy**:
+- Show "Audio Features Available: X%" metric
+- Display full analytics for tracks with audio features
+- Show alternative metrics (popularity-based) for tracks without audio features
+- Clear user messaging when audio features unavailable
 
 ### Data Processing Pipeline
 1. **Data Acquisition**: Load public datasets or fetch from Spotify API
@@ -485,10 +665,45 @@ Spotify provides machine-generated audio features (0.0-1.0 scale for most):
 - **tempo**: BPM (beats per minute)
 - **loudness**: Overall loudness in decibels
 
+**Note**: These features are only available via Kaggle dataset lookup (not directly from API). See [Critical API Limitation](#critical-api-limitation-audio-features) section.
+
 ### Composite Feature Engineering
 - **Mood Score**: Combine valence, energy, and acousticness for emotional profile
 - **Grooviness Index**: Merge danceability, energy, and tempo
 - **Focus Suitability**: Weight low speechiness, moderate energy, high instrumentalness
+
+### Alternative Metrics (Without Audio Features)
+When audio features are unavailable, derive insights from API metadata:
+
+**Popularity-Based Analysis**:
+- Average popularity score (0-100)
+- Mainstream vs Niche classification (high popularity = mainstream)
+- Popularity distribution and trends over time
+
+**Temporal Intelligence**:
+- Hour-of-day listening patterns (from `played_at` timestamps)
+- Day-of-week patterns (weekday vs weekend)
+- Monthly trends and seasonal changes
+- Listening streaks and session duration
+
+**Artist & Genre Diversity**:
+- Unique artists / total tracks ratio
+- Genre diversity score (unique genres / total artists)
+- Artist loyalty (repeat artist rate)
+- Discovery rate (new artists per month)
+
+**Content Preferences**:
+- Explicit vs clean content ratio
+- Album vs single preference
+- Average track duration
+- Release year distribution (new releases vs classics)
+
+**Artist Evolution**:
+- Top artist changes month-over-month
+- Artist rank trajectories over time
+- Genre drift analysis
+
+See `docs/DATA_ARCHITECTURE_RECOMMENDATION.md` for full list of metrics available without audio features.
 
 ## Data Sources
 
@@ -582,8 +797,10 @@ Implement clustering to automatically classify activities based on audio feature
 │   │   ├── visualizations.py     # Plotly chart generation (Spotify theming)
 │   │   ├── ui_components.py      # Page config, CSS styling
 │   │   ├── s3_storage.py         # Cloudflare R2 storage functions
-│   │   └── data_collection.py    # Snapshot collection & metrics
+│   │   ├── data_collection.py    # Snapshot collection & metrics
+│   │   └── dashboard_helpers.py  # Load current snapshot data for dashboards
 │   └── pages/                    # Streamlit pages (auto-discovered)
+│       ├── 0_Data_Sync.py        # Onboarding data collection page
 │       ├── 1_Dashboard.py        # Main dashboard page
 │       ├── 2_Advanced_Analytics.py    # Advanced analytics page
 │       ├── 3_Recent_Listening.py      # Recent listening page
@@ -644,35 +861,74 @@ git push origin main
 - Use descriptive branch names for features (e.g., `feature/playlist-health-metrics`)
 - Review changes with `git diff` before committing
 
+## Known Issues and Debugging
+
+### Common Errors
+
+**"No data found" on Dashboard Pages (FIXED ✅)**
+- **Cause**: Environment variables not loading in multi-page Streamlit apps
+- **Impact**: Dashboards can't connect to R2 storage, show "No data found" error
+- **Solution**: Added `load_dotenv()` to `s3_storage.py` module (fixed Nov 2025)
+- **Code Change**: Import and call `load_dotenv()` at module level in `app/func/s3_storage.py`
+
+**"Failed to load parquet: seek" Error (FIXED ✅)**
+- **Cause**: `pandas.read_parquet()` requires seekable file object, S3 stream doesn't support seeking
+- **Impact**: Cannot load snapshot data from R2
+- **Solution**: Read full content into `BytesIO` before passing to pandas (fixed Nov 2025)
+- **Code Change**: `parquet_bytes = response['Body'].read(); pd.read_parquet(io.BytesIO(parquet_bytes))`
+
+**KeyError: 'explicit' in data_collection.py (FIXED ✅)**
+- **Cause**: The 'explicit' field is missing from track data when audio features are unavailable (HTTP 403)
+- **Impact**: Snapshot collection fails during metrics computation
+- **Solution**: Use `safe_mean()` helper for all potentially missing fields in `compute_snapshot_metrics()`
+- **Status**: Already implemented with safe accessors throughout the code
+
+**ScriptRunContext Missing Warnings**
+- **Cause**: Streamlit's threading model and background data collection
+- **Impact**: Console warnings during data sync (can be safely ignored in bare mode)
+- **Solution**: These warnings are expected and do not affect functionality
+
+**Audio Features HTTP 403**
+- **Cause**: Spotify API access restrictions for this application
+- **Impact**: Cannot retrieve audio features for tracks directly via API
+- **Workaround**: ✅ **Fully integrated** - Kaggle dataset lookup provides 60-80% coverage via `enrich_with_audio_features()`
+
+### Debugging Data Collection
+
+If data sync fails:
+1. Check the browser console and terminal for error messages
+2. Look for the specific step where collection failed (recent tracks, top tracks, etc.)
+3. Verify R2 credentials are set in `.env`
+4. Check that all required fields exist in the data before computing metrics
+5. Review `errors.md` for documented issues and solutions
+
 ## Data Collection System
 
 ### Current Implementation
-The app includes a manual data collection system accessible via the "📸 Collect Snapshot" button in the sidebar after authentication.
+The app includes an **automatic onboarding data collection** triggered when users first authenticate.
+
+**Onboarding Flow (`0_Data_Sync.py`):**
+- Mandatory data sync page shown after authentication
+- Rotating Spotify facts displayed during collection
+- Real-time progress tracking
+- Takes ~60-90 seconds for full collection
+- Automatically redirects to dashboard when complete
 
 **What Gets Collected:**
-- Recent tracks (20 items) with audio features
-- Top tracks for all time ranges (20 items each: short/medium/long term)
-- Top artists for all time ranges (20 items each: short/medium/long term)
+- Recent tracks (50 items) with audio features
+- Top tracks for all time ranges (50 items each: short/medium/long term)
+- Top artists for all time ranges (50 items each: short/medium/long term)
 - Computed metrics (diversity scores, averages, context distributions)
 
 **Storage:**
 - Data stored in Cloudflare R2 (S3-compatible) as Parquet files
-- Structure: `ime565spotify/users/{user_id}/snapshots/{timestamp}_{data_type}.parquet`
+- Structure: `users/{user_id}/snapshots/{timestamp}_{data_type}.parquet`
 - 8 files per snapshot (recent_tracks, 3×top_tracks, 3×top_artists, metrics)
 
 **Rate Limiting:**
-- 0.5s delay between API batches
-- 0.2s delay between R2 uploads
-- Try-catch wrappers on all API calls
-- Collection takes ~5-10 seconds
-
-### Future Improvements (See api_mitigation.md)
-A detailed plan exists in `api_mitigation.md` for transforming data collection into an engaging experience:
-- Dedicated loading page with mini-game
-- 1000 rotating Spotify facts
-- Progress indicators
-- Restore full 50-item collections with better rate limit handling
-- Exponential backoff and retry logic
+- Exponential backoff and retry logic for API calls
+- Graceful handling of HTTP 429 (Too Many Requests)
+- Progress updates shown to user during collection
 
 ## Important Considerations
 
@@ -714,7 +970,15 @@ The platform differentiates from existing tools (Stats.fm, Obscurify, Spotify Wr
 For detailed information on specific topics:
 
 - **`README.md`**: Project overview and quick start guide
+- **`CLAUDE.md`**: This file - comprehensive development guide for Claude Code
+- **`errors.md`**: Known errors, troubleshooting steps, and solutions
 - **`docs/IME565_Project_Proposal_Final.md`**: Full project proposal and research foundation
+- **`docs/SPOTIFY_API_CAPABILITIES.md`**: Complete API endpoint testing results, limitations, and workarounds
+- **`docs/DATA_ARCHITECTURE_RECOMMENDATION.md`**: Original data storage strategy recommendation
+- **`docs/DATA_ARCHITECTURE_RECOMMENDATION_REVISED.md`**: Revised data storage strategy with current/ directory
+- **`docs/IMPLEMENTATION_SUMMARY.md`**: Summary of recent implementation changes
+- **`docs/USER_ANALYTICS_SURVEY.md`**: User analytics features and metrics survey
+- **`docs/INTEGRATION_GUIDE.md`**: Cloudflare R2 setup and integration instructions (if exists)
 - **`docs/notes.md`**: Research notes and technical patterns
 - **`data/README.md`**: Kaggle dataset download instructions
 

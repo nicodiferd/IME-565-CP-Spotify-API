@@ -45,10 +45,11 @@ def process_recent_tracks(recent_items, sp=None):
                 'track_name': track.get('name'),
                 'artist_name': track.get('artists', [{}])[0].get('name'),
                 'album_name': track.get('album', {}).get('name'),
+                'release_date': track.get('album', {}).get('release_date'),
                 'played_at': item.get('played_at'),
                 'duration_ms': track.get('duration_ms'),
                 'popularity': track.get('popularity'),
-                'explicit': track.get('explicit'),
+                'explicit': track.get('explicit', False),
                 'preview_url': track.get('preview_url')
             })
 
@@ -65,31 +66,21 @@ def process_recent_tracks(recent_items, sp=None):
     df['date'] = df['played_at'].dt.date
     df['is_weekend'] = df['played_at'].dt.dayofweek >= 5
 
-    # Fetch audio features if Spotify client provided (optional - may not be available in Development Mode)
-    if sp and track_ids:
-        audio_features = fetch_audio_features(sp, track_ids)
+    # Add derived fields
+    if 'release_date' in df.columns:
+        df['release_year'] = df['release_date'].str[:4].fillna('0').astype(int)
 
-        if audio_features:
-            # Create audio features dataframe
-            af_df = pd.DataFrame(audio_features)
-            af_df.rename(columns={'id': 'track_id'}, inplace=True)
+    # Add hour_of_day for temporal analysis
+    df['hour_of_day'] = df['hour']
 
-            # Merge with main dataframe
-            df = df.merge(af_df, on='track_id', how='left')
-
-            # Add composite features if module available
-            if create_composite_features and 'danceability' in df.columns:
-                try:
-                    df = create_composite_features(df)
-                except Exception as e:
-                    pass  # Silently continue - composite features are optional
-
-            # Add context classification if module available
-            if classify_context and 'energy' in df.columns:
-                try:
-                    df = classify_context(df)
-                except Exception as e:
-                    pass  # Silently continue - context classification is optional
+    # NOTE: Audio features endpoint returns HTTP 403 (not available for this app)
+    # We use Kaggle dataset lookup instead - see dashboard_helpers.py for enrichment
+    # Commenting out to avoid error noise and wasted API calls:
+    #
+    # if sp and track_ids:
+    #     audio_features = fetch_audio_features(sp, track_ids)
+    #     if audio_features:
+    #         # Merge and add composite features...
 
     return df
 
@@ -111,9 +102,11 @@ def process_top_tracks(top_tracks, sp=None):
                 'track_name': track.get('name'),
                 'artist_name': track.get('artists', [{}])[0].get('name'),
                 'album_name': track.get('album', {}).get('name'),
+                'release_date': track.get('album', {}).get('release_date'),
                 'popularity': track.get('popularity'),
                 'duration_ms': track.get('duration_ms'),
                 'duration_min': track.get('duration_ms', 0) / 60000,
+                'explicit': track.get('explicit', False),
                 'preview_url': track.get('preview_url')
             })
 
@@ -122,28 +115,14 @@ def process_top_tracks(top_tracks, sp=None):
 
     df = pd.DataFrame(data)
 
-    # Fetch audio features
-    if sp and track_ids:
-        audio_features = fetch_audio_features(sp, track_ids)
-
-        if audio_features:
-            af_df = pd.DataFrame(audio_features)
-            af_df.rename(columns={'id': 'track_id'}, inplace=True)
-            df = df.merge(af_df, on='track_id', how='left')
-
-            # Add composite features
-            if create_composite_features and 'danceability' in df.columns:
-                try:
-                    df = create_composite_features(df)
-                except:
-                    pass
-
-            # Add context
-            if classify_context and 'energy' in df.columns:
-                try:
-                    df = classify_context(df)
-                except:
-                    pass
+    # NOTE: Audio features endpoint returns HTTP 403 (not available for this app)
+    # We use Kaggle dataset lookup instead - see dashboard_helpers.py for enrichment
+    # Commenting out to avoid error noise and wasted API calls:
+    #
+    # if sp and track_ids:
+    #     audio_features = fetch_audio_features(sp, track_ids)
+    #     if audio_features:
+    #         # Merge and add composite features...
 
     return df
 
