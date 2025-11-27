@@ -310,11 +310,11 @@ git push origin feature/your-feature
 | File | Purpose |
 |------|---------|
 | `docs/SPOTIFY_API_CAPABILITIES.md` | API endpoint testing results & limitations |
-| `docs/DATA_ARCHITECTURE_RECOMMENDATION_REVISED.md` | Storage strategy with current/ directory |
+| `docs/ARCHITECTURE.md` | Storage strategy with current/ directory |
 | `docs/TEMPORAL_FEATURES_GUIDE.md` | Datetime utilities documentation |
-| `docs/INTEGRATION_GUIDE.md` | Cloudflare R2 setup instructions |
-| `docs/SESSION_LEARNINGS.md` | Development session notes |
-| `errors.md` | Known errors and troubleshooting |
+| `docs/IMPLEMENTATION_SUMMARY.md` | Summary of Phase 1 implementation |
+| `docs/IME565_Project_Proposal_Final.md` | Original project proposal |
+| `docs/PRESENTATION_SPRINT_PLAN.md` | Sprint plan for presentation |
 | `data/README.md` | Kaggle dataset download links |
 
 ## Development Phases
